@@ -95,15 +95,19 @@ portfolio_tickers = st.text_input("Enter multiple tickers separated by commas (e
 
 if portfolio_tickers:
     tickers = [t.strip() for t in portfolio_tickers.split(",")]
-    portfolio_data = yf.download(tickers, start=start_date, end=end_date)['Adj Close']
+    raw_data = yf.download(tickers, start=start_date, end=end_date)
 
-    if not portfolio_data.empty:
-        st.line_chart(portfolio_data)
-        st.write("📊 Portfolio Daily Returns")
-        daily_returns = portfolio_data.pct_change().dropna()
-        st.dataframe(daily_returns.tail())
-import numpy as np
-import matplotlib.pyplot as plt
+    if isinstance(raw_data.columns, pd.MultiIndex):
+        portfolio_data = raw_data['Adj Close']
+    else:
+        portfolio_data = raw_data[['Adj Close']]
+
+    st.subheader("📦 Portfolio Performance")
+    st.line_chart(portfolio_data)
+    st.write("📊 Portfolio Daily Returns")
+    daily_returns = portfolio_data.pct_change().dropna()
+    st.dataframe(daily_returns.tail())
+
 
 st.subheader("🧮 Monte Carlo Simulation")
 
