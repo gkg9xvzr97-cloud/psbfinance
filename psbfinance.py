@@ -99,3 +99,142 @@ elif company == "Ledger":
     st.write("Ledger is a crypto hardware wallet company founded in 2014. It raised over €450M and serves millions of users globally. Last updated: 2024.")
 elif company == "Revolut":
     st.write("Revolut is a UK-based fintech with strong presence in France. It has over 30M users globally and offers banking, crypto, and investment services. Last updated: 2024.")
+if ticker == "AMA":
+    st.subheader("📊 AMA ETF Key Stats")
+    st.write("**Expense Ratio:** 1.29%")
+    st.write("**Strategy:** 2x daily leveraged long exposure to AMAT")
+    st.write("**Asset Class:** Equity")
+    st.write("**Issuer:** Defiance ETFs")
+    st.write("**Last NAV:** $20.00 (as of Sep 2025)")
+statement_type = st.selectbox("Choose statement type", ["Balance Sheet", "Income Statement", "Cash Flow"])
+year = st.selectbox("Choose year", ["2023", "2022", "2021"])
+
+# Then load from a local CSV or external source
+st.write(f"Showing {statement_type} for {ticker} in {year}")
+if not info.get("marketCap"):
+    st.warning("This ETF may not publish full financial statements like traditional companies. For key stats, check issuer websites or SEC filings.")
+st.subheader("🚀 Fintech Explorer")
+
+company = st.selectbox("Choose a fintech", ["Qonto", "Lydia", "Swile", "Alan", "Ledger", "Revolut"])
+
+if company == "Qonto":
+    st.markdown("""
+    **Qonto** is a French neobank founded in 2017 by Steve Anavi & Alexandre Prot.
+    - 💰 **Funding:** $717M raised (Tiger Global, Valar Ventures)
+    - 📈 **Valuation:** $5B (2025)
+    - 🧾 **Revenue:** €448.7M in 2024 (+44% YoY)
+    - 🏦 **Profit:** €144M net profit in 2024
+    - 👥 **Customers:** 600,000+ across Europe
+    - 🛠️ **Services:** Business accounts, invoicing, expense tracking
+    - 📍 **HQ:** Paris, France
+    - 📰 **News:** Filed for banking license, launched 4% interest account
+    """)
+
+elif company == "Lydia":
+    st.markdown("""
+    **Lydia** is a mobile payment app launched in 2013 by Cyril Chiche & Antoine Porte.
+    - 💰 **Funding:** $260M (Tencent, Accel)
+    - 🦄 **Valuation:** $1B (2021)
+    - 👥 **Users:** 5.5M+ in France
+    - 💵 **Revenue:** $100M+ (2023 est.)
+    - 🛠️ **Services:** QR payments, shared accounts, crypto trading
+    - 📍 **HQ:** Paris, France
+    - 📰 **News:** Pivoted into a financial superapp
+    """)
+
+elif company == "Swile":
+    st.markdown("""
+    **Swile** offers employee benefits and smart cards, founded in 2016 by Loïc Soubeyrand.
+    - 💰 **Funding:** $328M (Index Ventures, Idinvest)
+    - 🦄 **Valuation:** $1B (2025)
+    - 💵 **Revenue:** $190.1M (2024)
+    - 👥 **Employees:** ~637
+    - 🛠️ **Services:** Swile Card, HR integrations, gamified surveys
+    - 📍 **HQ:** Montpellier, France
+    - 📰 **News:** Integrated Bimpli, expanded benefits platform
+    """)
+
+elif company == "Alan":
+    st.markdown("""
+    **Alan** is a digital health insurance startup founded in 2016 by Jean-Charles Samuelian & Charles Gorintin.
+    - 💰 **Funding:** $747M (Temasek, OTPP)
+    - 🦄 **Valuation:** $4.5B (2024)
+    - 👥 **Employees:** ~600
+    - 🛠️ **Services:** Insurance, telehealth, reimbursements
+    - 📍 **HQ:** Paris, France
+    - 📰 **News:** Raised €173M Series F, partnered with Belfius Bank
+    """)
+
+elif company == "Ledger":
+    st.markdown("""
+    **Ledger** is a crypto hardware wallet company founded in 2014 by Thomas France & Nicolas Bacca.
+    - 💰 **Funding:** $575M (Samsung, Morgan Creek)
+    - 🦄 **Valuation:** $1.3B (2025)
+    - 💵 **Revenue:** $133.2M (2024)
+    - 🛠️ **Products:** Ledger Nano X, Ledger Live, Ledger Enterprise
+    - 📍 **HQ:** Paris & Vierzon, France
+    - 📰 **News:** Expanded enterprise offerings, launched new wallet models
+    """)
+
+elif company == "Revolut":
+    st.markdown("""
+    **Revolut** is a UK-based fintech with strong presence in France, founded in 2015 by Nikolay Storonsky & Vlad Yatsenko.
+    - 💰 **Funding:** $1.99B (Visa, Index Ventures)
+    - 🦄 **Valuation:** $75B (2025)
+    - 💵 **Revenue:** $4.1B (2024)
+    - 🏦 **Profit:** $1.1B net profit (2024)
+    - 👥 **Users:** 52.5M globally
+    - 📍 **HQ:** London & Paris
+    - 📰 **News:** Secured UK banking license, expanded product suite""")
+    # ✅ Everything inside this block runs only when a ticker is entered
+if ticker:
+    stock = yf.Ticker(ticker)
+    info = stock.info
+
+    # Company Info
+    ...
+
+    # Stock Chart
+    ...
+
+    # Download Buttons
+    ...
+
+    # CAPM Calculator
+    ...
+
+    # Key Ratios
+    ...
+
+    # Full Financial Metrics
+    ...
+
+    # ✅ AMA ETF block (inside ticker block)
+    if ticker == "AMA":
+        st.subheader("📊 AMA ETF Key Stats")
+        st.write("**Expense Ratio:** 1.29%")
+        st.write("**Strategy:** 2x daily leveraged long exposure to AMAT")
+        st.write("**Asset Class:** Equity")
+        st.write("**Issuer:** Defiance ETFs")
+        st.write("**Last NAV:** $20.00 (as of Sep 2025)")
+
+    # ✅ Statement Type & Year dropdowns
+    statement_type = st.selectbox("Choose statement type", ["Balance Sheet", "Income Statement", "Cash Flow"])
+    year = st.selectbox("Choose year", ["2023", "2022", "2021"])
+    st.write(f"Showing {statement_type} for {ticker} in {year}")
+
+    if not info.get("marketCap"):
+        st.warning("This ETF may not publish full financial statements like traditional companies. For key stats, check issuer websites or SEC filings.")
+
+# ✅ Fintech Explorer (outside ticker block — keep only this version)
+st.subheader("🚀 Fintech Explorer")
+company = st.selectbox("Choose a fintech", ["Qonto", "Lydia", "Swile", "Alan", "Ledger", "Revolut"])
+
+# Full markdown profiles (keep this version only)
+if company == "Qonto":
+    st.markdown("""...""")
+elif company == "Lydia":
+    st.markdown("""...""")
+# etc.
+
+
