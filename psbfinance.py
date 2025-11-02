@@ -5,8 +5,8 @@ import pandas as pd
 # Page config
 st.set_page_config(page_title="PSBFinance", layout="wide")
 
-# Branding image
-st.image("psbfinance image.png", use_column_width=True)  # Make sure this file is in the same folder
+# Branding image (make sure this file is in the same folder)
+st.image("psbfinance image.png", use_column_width=True)
 
 # Intro text
 st.markdown("""
@@ -14,8 +14,6 @@ st.markdown("""
 ### Created by IRA.Divine  
 A student-led project designed to make financial data accessible, visual, and downloadable for everyone.  
 Built with Python, Streamlit, and real-time market data.
-
-**Mission:** Empower users to explore stocks, analyze performance, and download insights — all in one place.
 """)
 start_date = st.date_input("Start Date", value=pd.to_datetime("2000-01-01"))
 end_date = st.date_input("End Date", value=datetime.today())
@@ -42,3 +40,21 @@ if ticker:
     if not df.empty:
         st.subheader(f"📈 {ticker} Stock Price")
         st.line_chart(df['Adj Close'])
+rf = st.number_input("Risk-Free Rate (%)", value=2.0)
+
+if not df.empty:
+    returns = df['Adj Close'].pct_change().dropna()
+    risk_free_rate = rf / 100 / 252
+    excess_returns = returns - risk_free_rate
+
+    sharpe_ratio = (excess_returns.mean() / excess_returns.std()) * (252 ** 0.5)
+    volatility = returns.std() * (252 ** 0.5)
+
+    st.metric("📊 Sharpe Ratio", f"{sharpe_ratio:.2f}")
+    st.metric("📉 Annualized Volatility", f"{volatility:.2%}")
+
+    df['MA20'] = df['Adj Close'].rolling(window=20).mean()
+    df['MA50'] = df['Adj Close'].rolling(window=50).mean()
+
+    st.subheader("📈 Price with Moving Averages")
+    st.line_chart(df[['Adj Close', 'MA20', 'MA50']])
