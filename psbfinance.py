@@ -254,7 +254,7 @@ model = sm.OLS(excess_returns, X).fit()
 
 st.subheader("📈 Fama-French Model Results")
 st.write(model.summary())
-pip install XlsxWriter
+
 
 
 
