@@ -57,6 +57,7 @@ st.subheader("📊 CAPM Calculator")
 
 rf = st.number_input("Risk-Free Rate (%)", value=2.0)
 beta = st.number_input("Beta", value=info.get("beta", 1.0))
+)
 rm = st.number_input("Market Return (%)", value=8.0)
 
 capm_return = rf + beta * (rm - rf)
