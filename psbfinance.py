@@ -1,103 +1,84 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import matplotlib.pyplot as plt
+import io
 
-# Page config
 st.set_page_config(page_title="PSBFinance", layout="wide")
-
-# Title and credits
 st.title("📊 PSBFinance — Your Personal Stock Browser")
 st.markdown("**Created by Ira-DIVINE, Emelia-Nour, Vinay Rao Gajura**")
 
-# Ticker input
-ticker = st.text_input("Enter a stock ticker (e.g., AAPL, TSLA, MSFT):", key="ticker_input").upper()
+# 🔹 Ticker input
+tickers = st.text_input("Enter one or more stock tickers (e.g., AAPL, TSLA, MSFT):", key="ticker_input").upper()
+symbols = [t.strip() for t in tickers.split(",") if t.strip()]
 
-# Stock block
-if ticker:
+# 🔍 Loop through each ticker
+for ticker in symbols:
     stock = yf.Ticker(ticker)
     info = stock.info
+    df = stock.history(period='6mo')
 
-    # Company Info
-    st.subheader(f"{info.get('longName', 'Unknown')} ({ticker})")
+    st.header(f"📈 {info.get('longName', 'Unknown')} ({ticker})")
     st.write(f"**Sector:** {info.get('sector', 'N/A')}")
     st.write(f"**Industry:** {info.get('industry', 'N/A')}")
     st.write(f"**Website:** [{info.get('website', 'N/A')}]({info.get('website', '#')})")
     st.write(info.get('longBusinessSummary', 'No summary available.'))
 
-    # Stock Chart
-    df = stock.history(period='6mo')
-    st.subheader("📈 Stock Price Chart")
+    # 🔹 Price chart
+    st.subheader("📉 Stock Price (6 months)")
     st.line_chart(df['Close'])
-# 📥 Download Financial Statements
-st.subheader("📥 Download Financial Statements")
 
-try:
-    st.download_button(
-        label="Download Balance Sheet",
-        data=stock.balance_sheet.to_csv().encode(),
-        file_name=f"{ticker}_balance_sheet.csv",
-        mime="text/csv"
-    )
-    st.download_button(
-        label="Download Income Statement",
-        data=stock.income_stmt.to_csv().encode(),
-        file_name=f"{ticker}_income_statement.csv",
-        mime="text/csv"
-    )
-    st.download_button(
-        label="Download Cash Flow",
-        data=stock.cashflow.to_csv().encode(),
-        file_name=f"{ticker}_cash_flow.csv",
-        mime="text/csv"
-    )
-except Exception:
-    st.warning("Financial statements are not available for this ticker.")
-# 📊 CAPM Calculator
-st.subheader("📊 CAPM Calculator")
+    # 🔹 Download statements
+    st.subheader("📥 Download Financial Statements")
+    st.download_button("Balance Sheet", stock.balance_sheet.to_csv().encode(), f"{ticker}_balance_sheet.csv")
+    st.download_button("Income Statement", stock.income_stmt.to_csv().encode(), f"{ticker}_income_statement.csv")
+    st.download_button("Cash Flow", stock.cashflow.to_csv().encode(), f"{ticker}_cash_flow.csv")
 
-rf = st.number_input("Risk-Free Rate (%)", value=2.0)
-beta = st.number_input("Beta", value=info.get("beta", 1.0))
-)
-rm = st.number_input("Market Return (%)", value=8.0)
+    # 🔹 Export to Excel
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        stock.balance_sheet.to_excel(writer, sheet_name='Balance Sheet')
+        stock.income_stmt.to_excel(writer, sheet_name='Income Statement')
+        stock.cashflow.to_excel(writer, sheet_name='Cash Flow')
+    st.download_button("📤 Export All to Excel", buffer.getvalue(), f"{ticker}_financials.xlsx")
 
-capm_return = rf + beta * (rm - rf)
-st.write(f"**Expected Return (CAPM):** {capm_return:.2f}%")
-# 📊 Key Financial Ratios
-st.subheader("📊 Key Financial Ratios")
+    # 🔹 CAPM Calculator
+    st.subheader("📊 CAPM Calculator")
+    rf = st.number_input("Risk-Free Rate (%)", value=2.0)
+    beta = st.number_input("Beta", value=info.get("beta", 1.0))
+    rm = st.number_input("Market Return (%)", value=8.0)
+    capm_return = rf + beta * (rm - rf)
+    st.write(f"**Expected Return (CAPM):** {capm_return:.2f}%")
 
-try:
-    pe_ratio = info['forwardPE']
-    roe = info['returnOnEquity']
-    current_ratio = info['currentRatio']
-    debt_equity = info['debtToEquity']
+    # 🔹 Key Ratios
+    st.subheader("📊 Key Financial Ratios")
+    ratios = {
+        "PE Ratio": info.get("forwardPE"),
+        "ROE": info.get("returnOnEquity"),
+        "Current Ratio": info.get("currentRatio"),
+        "Debt-to-Equity": info.get("debtToEquity")
+    }
+    for label, value in ratios.items():
+        st.write(f"**{label}:** {value:.2f}" if value else f"**{label}:** N/A")
 
-    st.write(f"**PE Ratio:** {pe_ratio:.2f} — {'High' if pe_ratio > 25 else 'Low' if pe_ratio < 10 else 'Moderate'}")
-    st.write(f"**Return on Equity (ROE):** {roe:.2%} — {'Strong' if roe > 0.15 else 'Weak'}")
-    st.write(f"**Current Ratio:** {current_ratio:.2f} — {'Healthy' if current_ratio > 1.5 else 'Risky'}")
-    st.write(f"**Debt-to-Equity:** {debt_equity:.2f} — {'High leverage' if debt_equity > 2 else 'Low leverage'}")
-except KeyError:
-    st.warning("Some financial ratios are not available for this company.")
-# 📊 Full Financial Metrics
-st.subheader("📊 Full Financial Metrics")
+    # 🔹 Ratio Chart
+    st.subheader("📊 Ratio Chart")
+    df_ratios = pd.DataFrame.from_dict(ratios, orient='index', columns=['Value']).dropna()
+    st.bar_chart(df_ratios)
 
-try:
+    # 🔹 Full Metrics
+    st.subheader("📊 Full Financial Metrics")
     metrics = {
         "Market Cap": info.get("marketCap"),
         "Enterprise Value": info.get("enterpriseValue"),
         "EBITDA": info.get("ebitda"),
         "EPS (TTM)": info.get("trailingEps"),
         "EPS (Forward)": info.get("forwardEps"),
-        "PE Ratio (TTM)": info.get("trailingPE"),
-        "PE Ratio (Forward)": info.get("forwardPE"),
         "PEG Ratio": info.get("pegRatio"),
         "Dividend Yield": info.get("dividendYield"),
-        "Beta": info.get("beta"),
         "Revenue Growth": info.get("revenueGrowth"),
         "Profit Margins": info.get("profitMargins"),
-        "ROE": info.get("returnOnEquity"),
         "ROA": info.get("returnOnAssets"),
-        "Debt-to-Equity": info.get("debtToEquity"),
-        "Current Ratio": info.get("currentRatio"),
         "Quick Ratio": info.get("quickRatio"),
         "Free Cash Flow": info.get("freeCashflow"),
         "Operating Cash Flow": info.get("operatingCashflow"),
@@ -105,158 +86,161 @@ try:
         "Price-to-Book": info.get("priceToBook"),
         "Price-to-Sales": info.get("priceToSalesTrailing12Months")
     }
-
     for label, value in metrics.items():
-        st.write(f"**{label}:** {value:,}" if value is not None else f"**{label}:** Data not available")
-except Exception:
-    st.error("Unable to load full financial metrics.")
+        st.write(f"**{label}:** {value:,}" if value else f"**{label}:** N/A")
+
 # 🚀 Fintech Explorer
 st.subheader("🚀 Fintech Explorer")
-
 company = st.selectbox("Choose a fintech", ["Qonto", "Lydia", "Swile", "Alan", "Ledger", "Revolut"], key="fintech_select")
 
 if company == "Qonto":
     st.markdown("""
-    **Qonto** is a French neobank founded in 2017 by Steve Anavi & Alexandre Prot.
-    - 💰 **Funding:** $717M raised (Tiger Global, Valar Ventures)
-    - 📈 **Valuation:** $5B (2025)
-    - 🧾 **Revenue:** €448.7M in 2024 (+44% YoY)
-    - 🏦 **Profit:** €144M net profit in 2024
-    - 👥 **Customers:** 600,000+ across Europe
-    - 🛠️ **Services:** Business accounts, invoicing, expense tracking
-    - 📍 **HQ:** Paris, France
-    - 📰 **News:** Filed for banking license, launched 4% interest account
+    **Qonto** — French neobank founded in 2017  
+    - 💰 $717M raised  
+    - 📈 $5B valuation  
+    - 🧾 €448.7M revenue (2024)  
+    - 🏦 €144M net profit  
+    - 👥 600,000+ customers  
+    - 🛠️ Business accounts, invoicing, expense tracking  
+    - 📍 Paris, France  
     """)
 
 elif company == "Lydia":
     st.markdown("""
-    **Lydia** is a mobile payment app launched in 2013 by Cyril Chiche & Antoine Porte.
-    - 💰 **Funding:** $260M (Tencent, Accel)
-    - 🦄 **Valuation:** $1B (2021)
-    - 👥 **Users:** 5.5M+ in France
-    - 💵 **Revenue:** $100M+ (2023 est.)
-    - 🛠️ **Services:** QR payments, shared accounts, crypto trading
-    - 📍 **HQ:** Paris, France
-    - 📰 **News:** Pivoted into a financial superapp
+    **Lydia** — Mobile payments app launched in 2013  
+    - 💰 $260M raised  
+    - 🦄 $1B valuation  
+    - 👥 5.5M+ users  
+    - 🛠️ QR payments, shared accounts, crypto  
+    - 📍 Paris, France  
     """)
 
 elif company == "Swile":
     st.markdown("""
-    **Swile** offers employee benefits and smart cards, founded in 2016 by Loïc Soubeyrand.
-    - 💰 **Funding:** $328M (Index Ventures, Idinvest)
-    - 🦄 **Valuation:** $1B (2025)
-    - 💵 **Revenue:** $190.1M (2024)
-    - 👥 **Employees:** ~637
-    - 🛠️ **Services:** Swile Card, HR integrations, gamified surveys
-    - 📍 **HQ:** Montpellier, France
-    - 📰 **News:** Integrated Bimpli, expanded benefits platform
+    **Swile** — Employee benefits platform  
+    - 💰 $328M raised  
+    - 🦄 $1B valuation  
+    - 💵 $190.1M revenue  
+    - 👥 ~637 employees  
+    - 🛠️ Swile Card, HR tools, gamified surveys  
+    - 📍 Montpellier, France  
     """)
 
 elif company == "Alan":
     st.markdown("""
-    **Alan** is a digital health insurance startup founded in 2016 by Jean-Charles Samuelian & Charles Gorintin.
-    - 💰 **Funding:** $747M (Temasek, OTPP)
-    - 🦄 **Valuation:** $4.5B (2024)
-    - 👥 **Employees:** ~600
-    - 🛠️ **Services:** Insurance, telehealth, reimbursements
-    - 📍 **HQ:** Paris, France
-    - 📰 **News:** Raised €173M Series F, partnered with Belfius Bank
+    **Alan** — Digital health insurance  
+    - 💰 $747M raised  
+    - 🦄 $4.5B valuation  
+    - 👥 ~600 employees  
+    - 🛠️ Insurance, telehealth, reimbursements  
+    - 📍 Paris, France  
     """)
 
 elif company == "Ledger":
     st.markdown("""
-    **Ledger** is a crypto hardware wallet company founded in 2014 by Thomas France & Nicolas Bacca.
-    - 💰 **Funding:** $575M (Samsung, Morgan Creek)
-    - 🦄 **Valuation:** $1.3B (2025)
-    - 💵 **Revenue:** $133.2M (2024)
-    - 🛠️ **Products:** Ledger Nano X, Ledger Live, Ledger Enterprise
-    - 📍 **HQ:** Paris & Vierzon, France
-    - 📰 **News:** Expanded enterprise offerings, launched new wallet models
+    **Ledger** — Crypto hardware wallets  
+    - 💰 $575M raised  
+    - 🦄 $1.3B valuation  
+    - 💵 $133.2M revenue  
+    - 🛠️ Ledger Nano X, Ledger Live  
+    - 📍 Paris & Vierzon  
     """)
 
 elif company == "Revolut":
     st.markdown("""
-    **Revolut** is a UK-based fintech with strong presence in France, founded in 2015 by Nikolay Storonsky & Vlad Yatsenko.
-    - 💰 **Funding:** $1.99B (Visa, Index Ventures)
-    - 🦄 **Valuation:** $75B (2025)
-    - 💵 **Revenue:** $4.1B (2024)
-    - 🏦 **Profit:** $1.1B net profit (2024)
-    - 👥 **Users:** 52.5M globally
-    - 📍 **HQ:** London & Paris
-    - 📰 **News:** Secured UK banking license, expanded product suite
+    **Revolut** — UK fintech with strong French presence  
+    - 💰 $1.99B raised  
+    - 🦄 $75B valuation  
+    - 💵 $4.1B revenue  
+    - 🏦 $1.1B net profit  
+    - 👥 52.5M users  
+    - 📍 London & Paris  
     """)
-    # 📁 Statement Type & Year Selector
-st.subheader("📁 View Financial Statement by Year")
-
-statement_type = st.selectbox("Choose statement type", ["Balance Sheet", "Income Statement", "Cash Flow"], key="statement_type")
-year = st.selectbox("Choose year", ["2023", "2022", "2021"], key="statement_year")
-
-st.write(f"Showing **{statement_type}** for **{ticker}** in **{year}**")
-
-# Placeholder for future logic (e.g., loading from CSV or API)
-st.info("This feature is under development. In the future, you'll be able to view historical statements by year.")
-# 🛡️ AMA ETF Fallback Block
-if ticker == "AMA":
-    st.subheader("📊 AMA ETF Key Stats")
-    st.write("**Expense Ratio:** 1.29%")
-    st.write("**Strategy:** 2x daily leveraged long exposure to AMAT")
-    st.write("**Asset Class:** Equity")
-    st.write("**Issuer:** Defiance ETFs")
-    st.write("**Last NAV:** $20.00 (as of Sep 2025)")
-    st.warning("This ETF may not publish full financial statements like traditional companies. For key stats, check issuer websites or SEC filings.")
-import io
-
-buffer = io.BytesIO()
-with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-    df.to_excel(writer, sheet_name='Financials')
-    writer.save()
-
-st.download_button(
-    label="Export to Excel",
-    data=buffer.getvalue(),
-    file_name=f"{ticker}_financials.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-tickers = st.text_input("Enter multiple tickers separated by commas (e.g., AAPL, MSFT, TSLA):", key="multi_tickers")
-if tickers:
-    symbols = [t.strip().upper() for t in tickers.split(",")]
-    for symbol in symbols:
-        stock = yf.Ticker(symbol)
-        info = stock.info
-        st.subheader(f"{info.get('longName', 'Unknown')} ({symbol})")
-        st.write(f"**Market Cap:** {info.get('marketCap', 'N/A')}")
-        st.write(f"**PE Ratio:** {info.get('forwardPE', 'N/A')}")
-import matplotlib.pyplot as plt
-
-ratios = {
-    "PE Ratio": info.get("forwardPE"),
-    "ROE": info.get("returnOnEquity"),
-    "Current Ratio": info.get("currentRatio"),
-    "Debt-to-Equity": info.get("debtToEquity")
-}
-df_ratios = pd.DataFrame.from_dict(ratios, orient='index', columns=['Value'])
-
-st.subheader("📊 Financial Ratios Chart")
-st.bar_chart(df_ratios)
-import statsmodels.api as sm
+    import statsmodels.api as sm
 import pandas_datareader.data as web
 from datetime import datetime
 
-start = st.date_input("Start Date", datetime(2015, 1, 1))
-end = st.date_input("End Date", datetime(2023, 12, 31))
+st.subheader("📈 Fama-French 3-Factor Model")
 
-ff_factors = web.DataReader('F-F_Research_Data_Factors', 'famafrench', start, end)[0]
-stock_returns = yf.download(ticker, start=start, end=end)['Adj Close'].pct_change().dropna()
-excess_returns = stock_returns - ff_factors['RF']
+selected_ticker = st.text_input("Choose one ticker for Fama-French analysis:", key="ff_ticker").upper()
+start_date = st.date_input("Start Date", datetime(2020, 1, 1))
+end_date = st.date_input("End Date", datetime(2023, 12, 31))
 
-X = ff_factors[['Mkt-RF', 'SMB', 'HML']]
-X = sm.add_constant(X)
-model = sm.OLS(excess_returns, X).fit()
+if selected_ticker:
+    ff_factors = web.DataReader('F-F_Research_Data_Factors', 'famafrench', start_date, end_date)[0]
+    ff_factors = ff_factors / 100  # Convert percentages to decimals
 
-st.subheader("📈 Fama-French Model Results")
-st.write(model.summary())
+    stock_data = yf.download(selected_ticker, start=start_date, end=end_date)['Adj Close']
+    stock_returns = stock_data.pct_change().dropna()
+    ff_factors = ff_factors.loc[stock_returns.index]
+
+    excess_returns = stock_returns - ff_factors['RF']
+    X = ff_factors[['Mkt-RF', 'SMB', 'HML']]
+    X = sm.add_constant(X)
+
+    model = sm.OLS(excess_returns, X).fit()
+    st.write(model.summary())
+    st.subheader("📊 Sharpe Ratio")
+
+returns = df['Close'].pct_change().dropna()
+risk_free_rate = rf / 100 / 252  # Daily risk-free rate
+excess_returns = returns - risk_free_rate
+sharpe_ratio = excess_returns.mean() / excess_returns.std()
+
+st.write(f"**Sharpe Ratio:** {sharpe_ratio:.2f}")
+st.subheader("📈 Alpha vs. Market")
+
+market = yf.download("^GSPC", start=df.index[0], end=df.index[-1])['Adj Close'].pct_change().dropna()
+stock = df['Close'].pct_change().dropna()
+aligned = pd.concat([stock, market], axis=1).dropna()
+aligned.columns = ['Stock', 'Market']
+
+X = sm.add_constant(aligned['Market'])
+model = sm.OLS(aligned['Stock'], X).fit()
+alpha = model.params['const']
+
+st.write(f"**Alpha:** {alpha:.4f}")
+st.subheader("📉 Volatility")
+
+volatility = returns.std() * (252 ** 0.5)  # Annualized
+st.write(f"**Annualized Volatility:** {volatility:.2%}")
+st.subheader("📊 Moving Averages")
+
+df['MA20'] = df['Close'].rolling(window=20).mean()
+df['MA50'] = df['Close'].rolling(window=50).mean()
+
+st.line_chart(df[['Close', 'MA20', 'MA50']])
+st.subheader("📊 Sharpe Ratio")
+
+returns = df['Close'].pct_change().dropna()
+risk_free_daily = rf / 100 / 252
+excess_returns = returns - risk_free_daily
+sharpe_ratio = excess_returns.mean() / excess_returns.std()
+
+st.write(f"**Sharpe Ratio:** {sharpe_ratio:.2f}")
+st.subheader("📈 Alpha vs. Market (S&P 500)")
+
+market_data = yf.download("^GSPC", start=df.index[0], end=df.index[-1])['Adj Close'].pct_change().dropna()
+stock_returns = df['Close'].pct_change().dropna()
+aligned = pd.concat([stock_returns, market_data], axis=1).dropna()
+aligned.columns = ['Stock', 'Market']
+
+X = sm.add_constant(aligned['Market'])
+model = sm.OLS(aligned['Stock'], X).fit()
+alpha = model.params['const']
+
+st.write(f"**Alpha:** {alpha:.4f}")
+st.subheader("📉 Annualized Volatility")
+
+volatility = returns.std() * (252 ** 0.5)
+st.write(f"**Volatility:** {volatility:.2%}")
+st.subheader("📊 Moving Averages")
+
+df['MA20'] = df['Close'].rolling(window=20).mean()
+df['MA50'] = df['Close'].rolling(window=50).mean()
+
+st.line_chart(df[['Close', 'MA20', 'MA50']])
 
 
-
-
+    
 
