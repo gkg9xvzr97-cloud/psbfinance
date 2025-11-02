@@ -110,28 +110,34 @@ st.subheader("🧮 Monte Carlo Simulation")
 num_simulations = st.slider("Number of Simulations", min_value=100, max_value=1000, value=500)
 num_days = st.slider("Number of Days to Simulate", min_value=30, max_value=365, value=252)
 
-if not df.empty:
-    last_price = df['Adj Close'].iloc[-1]
-    returns = df['Adj Close'].pct_change().dropna()
-    mean_return = returns.mean()
-    std_dev = returns.std()
+if ticker:
+    df = fetch_data(ticker, start_date, end_date)
 
-    simulation_df = pd.DataFrame()
+    if df is not None and not df.empty:
+        # All your analysis and charts go here
+        st.subheader(f"📈 {ticker} Stock Price")
+        st.line_chart(df['Adj Close'])
 
-    for i in range(num_simulations):
-        prices = [last_price]
-        for _ in range(num_days):
-            shock = np.random.normal(loc=mean_return, scale=std_dev)
-            price = prices[-1] * (1 + shock)
-            prices.append(price)
-        simulation_df[i] = prices
+        # Sharpe Ratio, Volatility, etc.
+        rf = st.number_input("Risk-Free Rate (%)", value=2.0)
+        returns = df['Adj Close'].pct_change().dropna()
+        risk_free_rate = rf / 100 / 252
+        excess_returns = returns - risk_free_rate
 
-    fig, ax = plt.subplots()
-    ax.plot(simulation_df)
-    ax.set_title(f"{ticker} Monte Carlo Simulation")
-    ax.set_xlabel("Days")
-    ax.set_ylabel("Price")
-    st.pyplot(fig)
+        sharpe_ratio = (excess_returns.mean() / excess_returns.std()) * (252 ** 0.5)
+        volatility = returns.std() * (252 ** 0.5)
+
+        st.metric("📊 Sharpe Ratio", f"{sharpe_ratio:.2f}")
+        st.metric("📉 Annualized Volatility", f"{volatility:.2%}")
+
+        df['MA20'] = df['Adj Close'].rolling(window=20).mean()
+        df['MA50'] = df['Adj Close'].rolling(window=50).mean()
+
+        st.subheader("📈 Price with Moving Averages")
+        st.line_chart(df[['Adj Close', 'MA20', 'MA50']])
+    else:
+        st.warning("No data found for this ticker.")
+
 st.subheader("🏢 Global Firms & FinTech Reports")
 
 reports = {
