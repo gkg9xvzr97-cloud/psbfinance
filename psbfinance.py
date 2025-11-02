@@ -32,21 +32,31 @@ if ticker:
         st.line_chart(df['Adj Close'])
 rf = st.number_input("Risk-Free Rate (%)", value=2.0)
 
-returns = df['Adj Close'].pct_change().dropna()
-risk_free_rate = rf / 100 / 252
-excess_returns = returns - risk_free_rate
+if ticker:
+    df = fetch_data(ticker, start_date, end_date)
+    
+    if not df.empty:
+        st.subheader(f"📈 {ticker} Stock Price")
+        st.line_chart(df['Adj Close'])
 
-sharpe_ratio = (excess_returns.mean() / excess_returns.std()) * (252 ** 0.5)
-volatility = returns.std() * (252 ** 0.5)
+        rf = st.number_input("Risk-Free Rate (%)", value=2.0)
 
-st.metric("📊 Sharpe Ratio", f"{sharpe_ratio:.2f}")
-st.metric("📉 Annualized Volatility", f"{volatility:.2%}")
+        returns = df['Adj Close'].pct_change().dropna()
+        risk_free_rate = rf / 100 / 252
+        excess_returns = returns - risk_free_rate
 
-df['MA20'] = df['Adj Close'].rolling(window=20).mean()
-df['MA50'] = df['Adj Close'].rolling(window=50).mean()
+        sharpe_ratio = (excess_returns.mean() / excess_returns.std()) * (252 ** 0.5)
+        volatility = returns.std() * (252 ** 0.5)
 
-st.subheader("📈 Price with Moving Averages")
-st.line_chart(df[['Adj Close', 'MA20', 'MA50']])
+        st.metric("📊 Sharpe Ratio", f"{sharpe_ratio:.2f}")
+        st.metric("📉 Annualized Volatility", f"{volatility:.2%}")
+
+        df['MA20'] = df['Adj Close'].rolling(window=20).mean()
+        df['MA50'] = df['Adj Close'].rolling(window=50).mean()
+
+        st.subheader("📈 Price with Moving Averages")
+        st.line_chart(df[['Adj Close', 'MA20', 'MA50']])
+
 st.markdown("""
 ### 📚 What Is the Fama-French 3-Factor Model?
 
