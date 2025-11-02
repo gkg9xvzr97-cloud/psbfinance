@@ -79,3 +79,80 @@ if ticker:
     st.download_button("Balance Sheet", stock.balance_sheet.to_csv().encode(), f"{ticker}_balance_sheet.csv")
     st.download_button("Income Statement", stock.income_stmt.to_csv().encode(), f"{ticker}_income_statement.csv")
     st.download_button("Cash Flow", stock.cashflow.to_csv().encode(), f"{ticker}_cash_flow.csv")
+st.subheader("📦 Portfolio Tracker")
+
+portfolio_tickers = st.text_input("Enter multiple tickers separated by commas (e.g., AAPL, TSLA, MSFT)").upper()
+
+if portfolio_tickers:
+    tickers = [t.strip() for t in portfolio_tickers.split(",")]
+    portfolio_data = yf.download(tickers, start=start_date, end=end_date)['Adj Close']
+
+    if not portfolio_data.empty:
+        st.line_chart(portfolio_data)
+        st.write("📊 Portfolio Daily Returns")
+        daily_returns = portfolio_data.pct_change().dropna()
+        st.dataframe(daily_returns.tail())
+import numpy as np
+import matplotlib.pyplot as plt
+
+st.subheader("🧮 Monte Carlo Simulation")
+
+num_simulations = st.slider("Number of Simulations", min_value=100, max_value=1000, value=500)
+num_days = st.slider("Number of Days to Simulate", min_value=30, max_value=365, value=252)
+
+if not df.empty:
+    last_price = df['Adj Close'].iloc[-1]
+    returns = df['Adj Close'].pct_change().dropna()
+    mean_return = returns.mean()
+    std_dev = returns.std()
+
+    simulation_df = pd.DataFrame()
+
+    for i in range(num_simulations):
+        prices = [last_price]
+        for _ in range(num_days):
+            shock = np.random.normal(loc=mean_return, scale=std_dev)
+            price = prices[-1] * (1 + shock)
+            prices.append(price)
+        simulation_df[i] = prices
+
+    fig, ax = plt.subplots()
+    ax.plot(simulation_df)
+    ax.set_title(f"{ticker} Monte Carlo Simulation")
+    ax.set_xlabel("Days")
+    ax.set_ylabel("Price")
+    st.pyplot(fig)
+st.subheader("🏢 Global Firms & FinTech Reports")
+
+reports = {
+    "KPMG UK Financials 2024": "https://assets.kpmg.com/content/dam/kpmgsites/uk/pdf/2025/06/uk-members-report-and-financial-statements-2024.pdf",
+    "KPMG Integrated Report": "https://corporatereporting.kpmg.nl/downloads",
+    "EY SEC Annual Reports 2024": "https://www.ey.com/en_us/technical/accountinglink/2024-sec-annual-reports-form-10-k",
+    "EY Global Revenue Report": "https://www.ey.com/en_gl/newsroom/2024/10/ey-reports-global-revenue-of-51-point-2-billion-us-dollars-for-fiscal-year-2024",
+    "PwC Transparency Report 2024": "https://www.pwc.com/gx/en/about/transparency-report/2024/financials.html",
+    "PwC UK Financial Statements": "https://www.pwc.co.uk/annualreport/assets/2024/pwc-uk-financial-statements-2024.pdf",
+    "Global FinTech Report (GFTN)": "https://gftn.co/hubfs/Global%20State%20of%20Fintech%202024/Global%20State%20of%20FinTech%20Report%202024%20Full%20-%20Publish.pdf",
+    "F-Prime FinTech Index": "https://fintechindex.fprimecapital.com/wp-content/uploads/2024/02/F-Prime-Capital-2024-State-of-Fintech-Report.pdf",
+    "BCG FinTech Growth Report": "https://www.bcg.com/publications/2024/global-fintech-prudence-profits-and-growth"
+}
+
+for title, url in reports.items():
+    st.markdown(f"- [{title}]({url})")
+st.subheader("🌍 Global Firms & FinTech Reports")
+
+reports = {
+    "KPMG IFRS Guide 2024": "https://assets.kpmg.com/content/dam/kpmgsites/xx/pdf/ifrg/2024/isg-2024-ifs.pdf",
+    "KPMG Disclosures Brochure": "https://assets.kpmg.com/content/dam/kpmg/be/pdf/IFRS-Illustrative-disclosures-2024-EN-Brochure-LR.pdf",
+    "EY Global Revenue Report 2024": "https://www.ey.com/en_gl/newsroom/2024/10/ey-reports-global-revenue-of-51-point-2-billion-us-dollars-for-fiscal-year-2024",
+    "EY IFRS Disclosure Checklist": "https://www.ey.com/en_gl/technical/ifrs-technical-resources/international-gaap-disclosure-checklist-for-annual-financial-statements-september-2024",
+    "PwC Transparency Report": "https://www.pwc.com/gx/en/about/transparency-report/2024/financials.html",
+    "Stripe Annual Letter 2024": "https://stripe.com/annual-updates/2024",
+    "Stripe Payment Volume Report": "https://stripe.com/newsroom/news/stripe-2024-update",
+    "Revolut Financial Statements": "https://www.revolut.com/reports-and-results/",
+    "PayPal FinTech Trends 2024": "https://www.paypal.com/us/brc/article/8-payment-technology-trends-2024"
+}
+
+for title, url in reports.items():
+    st.markdown(f"### 📄 {title}")
+    st.markdown(f"[🔗 View Full Report]({url})")
+    st.markdown(f'<iframe src="{url}" width="100%" height="600px"></iframe>', unsafe_allow_html=True)
