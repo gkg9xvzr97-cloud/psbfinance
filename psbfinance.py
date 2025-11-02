@@ -115,12 +115,26 @@ num_simulations = st.slider("Number of Simulations", min_value=100, max_value=10
 num_days = st.slider("Number of Days to Simulate", min_value=30, max_value=365, value=252)
 
 if ticker:
-    df = fetch_data(ticker, start_date, end_date)
+    df = yf.download(ticker, start=start_date, end=end_date)
 
-    if df is not None and not df.empty:
-        # All your analysis and charts go here
+    # Handle single vs multiple tickers
+    if isinstance(df.columns, pd.MultiIndex):
+        try:
+            df = df['Adj Close']
+        except KeyError:
+            st.error("Could not find 'Adj Close' in multi-index data. Try a different ticker.")
+            df = pd.DataFrame()
+    else:
+        if 'Adj Close' in df.columns:
+            df = df[['Adj Close']]
+        else:
+            st.error("Could not find 'Adj Close' in data. Try a different ticker.")
+            df = pd.DataFrame()
+
+    if not df.empty:
         st.subheader(f"📈 {ticker} Stock Price")
-        st.line_chart(df['Adj Close'])
+        st.line_chart(df)
+
 
         # Sharpe Ratio, Volatility, etc.
         rf = st.number_input("Risk-Free Rate (%)", value=2.0)
