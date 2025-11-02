@@ -2,5 +2,8 @@ streamlit
 yfinance
 pandas
 XlsxWriter
+statsmodels
+pandas_datareader
+matplotlib
 
 
