@@ -256,3 +256,4 @@ st.subheader("📈 Fama-French Model Results")
 st.write(model.summary())
 
 
+
