@@ -11,7 +11,7 @@ if section == "About Us":
     st.title("🧠 Welcome to PSBFinance")
 
     # Display image from GitHub
-st.image("https://raw.githubusercontent.com/gkyash97-st-cloud/psbfinance/main/capilotimage.png", use_column_width=True)
+    st.image("https://raw.githubusercontent.com/gkyash97-st-cloud/psbfinance/main/capilotimage.png", use_column_width=True)
 
     st.markdown("""
     ### Built by students for students.
@@ -24,5 +24,25 @@ st.image("https://raw.githubusercontent.com/gkyash97-st-cloud/psbfinance/main/ca
     - Amelie-Nour  
     - Sai Vinay  
     - N. Pooja  
-    - Ira.Divine (Founder & Architect )
+    - Ira.Divine (Founder & Architect — mentioned here only)
     """)
+    import fitz  # PyMuPDF
+
+if section == "General Knowledge":
+    st.header("📚 General Finance Knowledge")
+
+    try:
+        doc = fitz.open("Hull J.C.-Options, Futures and Other Derivatives_11th edition[1].pdf")
+        text = ""
+        for page in doc:
+            text += page.get_text()
+
+        st.success("✅ Book loaded successfully.")
+        st.markdown("### 🔍 Summary of Hull's Derivatives Book")
+
+        # Display first 2000 characters
+        st.write(text[:2000])
+        st.info("This is a preview. Future versions will include topic-based summaries and definitions.")
+    except Exception as e:
+        st.warning("📂 Book not found. Please make sure the PDF is in your repo and named correctly.")
+
