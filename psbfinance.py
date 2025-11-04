@@ -44,3 +44,6 @@ if section == "About Us":
         st.write("📘 Example: If you upload a book on corporate finance, this section will explain topics like capital structure, valuation, and financial ratios.")
     else:
         st.warning("📂 Please upload a document to begin.")
+ook on corporate finance, this section will explain topics like capital structure, valuation, and financial ratios.")
+    else:
+        st.warning("📂 Please upload a document to begin.")
