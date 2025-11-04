@@ -11,7 +11,7 @@ if section == "About Us":
     st.title("🧠 Welcome to PSBFinance")
 
     # Display image from GitHub
-    st.image("https://raw.githubusercontent.com/gkyash97-st-cloud/psbfinance/main/capilotimage.png", use_column_width=True)
+st.image("https://raw.githubusercontent.com/gkyash97-st-cloud/psbfinance/main/capilotimage.png", use_column_width=True)
 
     st.markdown("""
     ### Built by students for students.
