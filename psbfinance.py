@@ -16,10 +16,10 @@ if section == "About Us":
     st.title("🧠 Welcome to PSBFinance")
 
     # Load homepage image
-    if os.path.exists("CAPILOT IMAGE.png"):
-        st.image("CAPILOT IMAGE.png", use_column_width=True)
+    if os.path.exists("CAPLOIT_IMAGE.png"):
+        st.image("CAPLOIT_IMAGE.png", use_column_width=True)
     else:
-        st.warning("Homepage image not found. Please upload 'CAPILOT IMAGE.png'.")
+        st.warning("Homepage image not found. Please upload 'CAPLOIT_IMAGE.png'.")
 
     st.markdown("""
     ### Built by students for students.
@@ -32,5 +32,6 @@ if section == "About Us":
     - Amelie-Nour  
     - Sai Vinay  
     - N. Pooja  
-    - Ira.Divine (Founder & Architect)
+    - Ira.Divine (Founder & Architect )
     """)
+    
