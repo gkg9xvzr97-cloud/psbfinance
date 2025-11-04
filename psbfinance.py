@@ -11,7 +11,7 @@ if section == "About Us":
     st.title("🧠 Welcome to PSBFinance")
 
     # Display image directly from repo
-    st.image("CAPILOT IMAGE.png", use_column_width=True)
+    st.image("CAPILOTIMAGE.png", use_column_width=True)
 
     st.markdown("""
     ### Built by students for students.
@@ -24,5 +24,5 @@ if section == "About Us":
     - Amelie-Nour  
     - Sai Vinay  
     - N. Pooja  
-    - Ira.Divine (Founder & Architect — mentioned here only)
+    - Ira.Divine (Founder & Architect)
     """)
