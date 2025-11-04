@@ -28,5 +28,20 @@ if section == "About Us":
     - Amelie-Nour  
     - Sai Vinay  
     - N. Pooja  
-    - Ira.Divine (Founder & Architect — mentioned here only)
+    - Ira.Divine (Founder)
     """)
+    if section == "General Knowledge":
+    st.header("📚 General Finance Knowledge")
+
+    uploaded_file = st.file_uploader("Upload notes or books (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
+
+    if uploaded_file:
+        st.success("✅ File uploaded successfully.")
+        st.markdown("### 🔍 Summary of Uploaded Content")
+        st.info("This section will summarize the key concepts, definitions, and insights from your uploaded document.")
+
+        # Placeholder for now
+        st.write("📘 Example: If you upload a book on corporate finance, this section will explain topics like capital structure, valuation, and financial ratios.")
+    else:
+        st.warning("📂 Please upload a document to begin.")
+
