@@ -9,10 +9,7 @@ section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "F
 # Section 1: About Us
 if section == "About Us":
     st.title("🧠 Welcome to PSBFinance")
-
-    # Load image from GitHub
     st.image("https://raw.githubusercontent.com/gkyash97-st-cloud/psbfinance/main/capilotimage.png", use_column_width=True)
-
     st.markdown("""
     ### Built by students for students.
 
@@ -26,6 +23,21 @@ if section == "About Us":
     - N. Pooja  
     - Ira.Divine (Founder & Architect — mentioned here only)
     """)
+
+# Section 2: General Knowledge
 if section == "General Knowledge":
     st.header("📚 General Finance Knowledge")
-    st.info("Hull's book summary will appear here once PyMuPDF is installed.")
+
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open("Hull J.C.-Options, Futures and Other Derivatives_11th edition[1].pdf")
+        text = ""
+        for page in doc:
+            text += page.get_text()
+
+        st.success("✅ Book loaded successfully.")
+        st.markdown("### 🔍 Summary of Hull's Derivatives Book")
+        st.write(text[:2000])
+        st.info("This is a preview. Future versions will include topic-based summaries and definitions.")
+    except Exception as e:
+        st.warning("⚠️ Book not found or PyMuPDF not installed. Please check your repo and requirements.txt.")
