@@ -4,8 +4,14 @@ import streamlit as st
 st.set_page_config(page_title="PSBFinance", layout="wide")
 
 # Sidebar navigation
-section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "Finance News", "Global Financials", "Finance Quiz", "Topic Explorer", "Document Analyzer"])
+ssection = st.sidebar.radio("📂 Navigate", [
+    "About Us", "General Knowledge", "Finance News", "Global Financials",
+    "Finance Quiz", "Topic Explorer", "Document Analyzer", "Company Search", "SEC Filings"
+])
 
+])
+
+st.markdown("---")
 
 
 # Section 1: About Us
@@ -23,6 +29,7 @@ if section == "About Us":
     - N. Pooja  
     - Ira.Divine (Founder & Architect — mentioned here only)
     """)
+st.markdown("---")
 
 # Section 2: General Knowledge
 if section == "General Knowledge":
@@ -74,6 +81,8 @@ if section == "General Knowledge":
     ---
     This summary is designed to help you grasp the core mechanics of modern financial instruments and risk management — fast, clean, and practical.
     """)
+    st.markdown("---")
+
 if section == "Finance News":
     st.header("📰 Latest Finance News")
 
@@ -124,8 +133,11 @@ if chart_ticker:
         st.caption(f"Showing closing prices for {chart_ticker.upper()} over the past 6 months.")
     except Exception as e:
         st.error("⚠️ Could not load chart. Please check the ticker.")
+        st.markdown("---")
+
 if section == "Finance Quiz":
     st.header("🎓 Finance Knowledge Quiz")
+
 
     st.markdown("Test your understanding of key finance concepts with this short quiz.")
 
@@ -156,6 +168,7 @@ if section == "Finance Quiz":
             "answer": 1
         }
     ]
+st.markdown("---")
 
     for i, q in enumerate(questions):
         st.subheader(f"Q{i+1}: {q['question']}")
@@ -223,6 +236,8 @@ if section == "Topic Explorer":
         - Securitization pools loans into tradable securities.
         - Valuation adjustments account for credit, funding, and margin risks.
         """)
+        st.markdown("---")
+
 if section == "Document Analyzer":
     st.header("📁 Finance Document Analyzer")
 
@@ -238,3 +253,75 @@ if section == "Document Analyzer":
 
         st.markdown("### 🧠 Summary")
         st.write("This document discusses key financial concepts including derivatives, pricing models, risk management, and market structures. It may include formulas, examples, and strategic insights relevant to students and professionals.")
+st.markdown("""
+---
+© 2025 PSBFinance — Built by students for students.
+""")
+import pandas as pd
+import yfinance as yf
+
+if section == "Company Search":
+    st.header("🏢 Company Search & Financials")
+
+    query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):")
+
+    if query:
+        try:
+            ticker = yf.Ticker(query)
+            info = ticker.info
+
+            st.subheader(f"📊 {info.get('longName', query)} ({query.upper()})")
+            st.markdown(f"**Sector:** {info.get('sector', 'N/A')}  \n**Industry:** {info.get('industry', 'N/A')}  \n**Market Cap:** {info.get('marketCap', 'N/A'):,}")
+
+            st.markdown("### 🧾 Financial Statements")
+
+            # Income Statement
+            st.markdown("#### 📈 Income Statement")
+            income = ticker.financials.T
+            st.dataframe(income)
+            st.download_button("Download Income Statement", income.to_csv().encode(), file_name="income_statement.csv")
+
+            # Balance Sheet
+            st.markdown("#### 🧾 Balance Sheet")
+            balance = ticker.balance_sheet.T
+            st.dataframe(balance)
+            st.download_button("Download Balance Sheet", balance.to_csv().encode(), file_name="balance_sheet.csv")
+
+            # Cash Flow
+            st.markdown("#### 💵 Cash Flow Statement")
+            cashflow = ticker.cashflow.T
+            st.dataframe(cashflow)
+            st.download_button("Download Cash Flow", cashflow.to_csv().encode(), file_name="cash_flow.csv")
+
+        except Exception as e:
+            st.error("⚠️ Could not retrieve company data. Please check the ticker or try again later.")
+import requests
+from bs4 import BeautifulSoup
+
+if section == "SEC Filings":
+    st.header("🧾 SEC Filings Viewer")
+
+    sec_ticker = st.text_input("Enter a company ticker (e.g., AAPL, MSFT, TSLA):")
+
+    if sec_ticker:
+        st.markdown("Showing latest 10-K, 10-Q, and 8-K filings from the SEC EDGAR database.")
+
+        base_url = f"https://www.sec.gov/cgi-bin/browse-edgar?CIK={sec_ticker}&type=&owner=exclude&count=10&action=getcompany"
+
+        try:
+            response = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"})
+            soup = BeautifulSoup(response.text, "html.parser")
+            rows = soup.find_all("tr")
+
+            for row in rows:
+                cols = row.find_all("td")
+                if len(cols) >= 4:
+                    form_type = cols[0].text.strip()
+                    filing_date = cols[3].text.strip()
+                    link_tag = cols[1].find("a")
+                    if link_tag:
+                        filing_link = "https://www.sec.gov" + link_tag["href"]
+                        if form_type in ["10-K", "10-Q", "8-K"]:
+                            st.markdown(f"**{form_type}** filed on {filing_date} — [View Filing]({filing_link})")
+        except Exception as e:
+            st.error("⚠️ Could not retrieve SEC filings. Please check the ticker or try again later.")
