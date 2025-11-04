@@ -32,6 +32,5 @@ if section == "About Us":
     - Amelie-Nour  
     - Sai Vinay  
     - N. Pooja  
-    - Ira.Divine (Founder & Architect )
+    - Ira.Divine (Founder & Architect — mentioned here only)
     """)
-    
