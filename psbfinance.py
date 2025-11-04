@@ -10,8 +10,12 @@ section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "F
 if section == "About Us":
     st.title("🧠 Welcome to PSBFinance")
 
-    # Display image directly from repo
-    st.image("CAPILOTIMAGE.png", use_column_width=True)
+    # Upload image manually from laptop
+    uploaded_image = st.file_uploader("📷 Upload CAPILOTIMAGE.png", type=["png", "jpg", "jpeg"])
+    if uploaded_image:
+        st.image(uploaded_image, use_column_width=True)
+    else:
+        st.info("Please upload the CAPILOTIMAGE.png file from your laptop to display it here.")
 
     st.markdown("""
     ### Built by students for students.
@@ -24,5 +28,5 @@ if section == "About Us":
     - Amelie-Nour  
     - Sai Vinay  
     - N. Pooja  
-    - Ira.Divine (Founder & Architect)
+    - Ira.Divine (Founder & Architect — mentioned here only)
     """)
