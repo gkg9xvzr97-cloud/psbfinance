@@ -4,7 +4,7 @@ import streamlit as st
 st.set_page_config(page_title="PSBFinance", layout="wide")
 
 # Sidebar navigation
-section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "Finance News", "Global Financials", "Finance Quiz"])
+section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "Finance News", "Global Financials", "Finance Quiz", "Topic Explorer", "Document Analyzer"])
 
 
 
@@ -164,3 +164,77 @@ if section == "Finance Quiz":
             st.success("✅ Correct!")
         else:
             st.warning(f"❌ Incorrect. Correct answer: {q['options'][q['answer']]}")
+if section == "Topic Explorer":
+    st.header("🧠 Explore Finance by Topic")
+
+    topic = st.selectbox("Choose a topic", [
+        "Options & Strategies",
+        "Risk & Volatility",
+        "Credit & Derivatives",
+        "Commodities & Real Options",
+        "Interest Rates & Pricing",
+        "Swaps & Securitization"
+    ])
+
+    if topic == "Options & Strategies":
+        st.markdown("""
+        ### 📘 Options & Strategies
+        - Options give rights to buy/sell assets at set prices.
+        - Strategies include spreads, straddles, and protective puts.
+        - Pricing uses binomial trees and Black-Scholes models.
+        """)
+
+    elif topic == "Risk & Volatility":
+        st.markdown("""
+        ### 📘 Risk & Volatility
+        - Value at Risk and Expected Shortfall measure downside risk.
+        - Volatility models include EWMA and GARCH.
+        - Greeks (delta, gamma, theta, etc.) track option sensitivities.
+        """)
+
+    elif topic == "Credit & Derivatives":
+        st.markdown("""
+        ### 📘 Credit & Derivatives
+        - Credit derivatives transfer default risk.
+        - CDS, synthetic CDOs, and TRS are key instruments.
+        - Risk management includes collateral, netting, and exposure modeling.
+        """)
+
+    elif topic == "Commodities & Real Options":
+        st.markdown("""
+        ### 📘 Commodities & Real Options
+        - Commodity derivatives reflect storage costs and seasonal patterns.
+        - Real options value strategic flexibility in business decisions.
+        - Used in energy, agriculture, and infrastructure planning.
+        """)
+
+    elif topic == "Interest Rates & Pricing":
+        st.markdown("""
+        ### 📘 Interest Rates & Pricing
+        - Spot rates discount future cashflows; yield curves show rates over time.
+        - Duration and convexity measure bond sensitivity to interest rate changes.
+        - Forward prices reflect cost of carry, income, and rate differentials.
+        """)
+
+    elif topic == "Swaps & Securitization":
+        st.markdown("""
+        ### 📘 Swaps & Securitization
+        - Swaps exchange fixed and floating payments or currencies.
+        - Securitization pools loans into tradable securities.
+        - Valuation adjustments account for credit, funding, and margin risks.
+        """)
+if section == "Document Analyzer":
+    st.header("📁 Finance Document Analyzer")
+
+    uploaded_file = st.file_uploader("Upload a finance-related document (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
+
+    if uploaded_file:
+        st.success(f"✅ Uploaded: {uploaded_file.name}")
+
+        file_text = uploaded_file.read().decode("utf-8", errors="ignore")
+
+        st.markdown("### 📄 Document Preview")
+        st.text_area("Content", file_text[:3000], height=300)
+
+        st.markdown("### 🧠 Summary")
+        st.write("This document discusses key financial concepts including derivatives, pricing models, risk management, and market structures. It may include formulas, examples, and strategic insights relevant to students and professionals.")
