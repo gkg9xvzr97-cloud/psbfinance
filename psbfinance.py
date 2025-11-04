@@ -10,8 +10,8 @@ section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "F
 if section == "About Us":
     st.title("🧠 Welcome to PSBFinance")
 
-    # Display image from repo
-    st.image("CAPILOTIMAGE.png", use_column_width=True)
+    # Display image from GitHub
+    st.image("https://raw.githubusercontent.com/gkyash97-st-cloud/psbfinance/main/capilotimage.png", use_column_width=True)
 
     st.markdown("""
     ### Built by students for students.
@@ -24,5 +24,5 @@ if section == "About Us":
     - Amelie-Nour  
     - Sai Vinay  
     - N. Pooja  
-    - Ira.Divine (Founder & Architect — mentioned here only)
+    - Ira.Divine (Founder & Architect )
     """)
