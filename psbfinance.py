@@ -24,14 +24,16 @@ if section == "About Us":
     - Amelie-Nour  
     - Sai Vinay  
     - N. Pooja  
-    - Ira.Divine (Founder & Architect — mentioned here only)
+    - Ira.Divine (Founder & Architect )
     """)
-    import fitz  # PyMuPDF
+# Comment this in only after PyMuPDF is installed via requirements.txt
+# import fitz  # PyMuPDF
 
 if section == "General Knowledge":
     st.header("📚 General Finance Knowledge")
 
     try:
+        # Load Hull book PDF
         doc = fitz.open("Hull J.C.-Options, Futures and Other Derivatives_11th edition[1].pdf")
         text = ""
         for page in doc:
@@ -44,5 +46,4 @@ if section == "General Knowledge":
         st.write(text[:2000])
         st.info("This is a preview. Future versions will include topic-based summaries and definitions.")
     except Exception as e:
-        st.warning("📂 Book not found. Please make sure the PDF is in your repo and named correctly.")
-
+        st.warning("📂 Book not found or PyMuPDF not installed. Please check your repo and requirements.txt.")
