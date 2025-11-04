@@ -4,12 +4,18 @@ import streamlit as st
 st.set_page_config(page_title="PSBFinance", layout="wide")
 
 # Sidebar navigation
-ssection = st.sidebar.radio("📂 Navigate", [
-    "About Us", "General Knowledge", "Finance News", "Global Financials",
-    "Finance Quiz", "Topic Explorer", "Document Analyzer", "Company Search", "SEC Filings"
+section = st.sidebar.radio("📂 Navigate", [
+    "About Us",
+    "General Knowledge",
+    "Finance News",
+    "Global Financials",
+    "Finance Quiz",
+    "Topic Explorer",
+    "Document Analyzer",
+    "Company Search",
+    "SEC Filings"
 ])
 
-])
 
 st.markdown("---")
 
@@ -29,7 +35,6 @@ if section == "About Us":
     - N. Pooja  
     - Ira.Divine (Founder & Architect — mentioned here only)
     """)
-st.markdown("---")
 
 # Section 2: General Knowledge
 if section == "General Knowledge":
@@ -81,7 +86,6 @@ if section == "General Knowledge":
     ---
     This summary is designed to help you grasp the core mechanics of modern financial instruments and risk management — fast, clean, and practical.
     """)
-    st.markdown("---")
 
 if section == "Finance News":
     st.header("📰 Latest Finance News")
@@ -133,7 +137,6 @@ if chart_ticker:
         st.caption(f"Showing closing prices for {chart_ticker.upper()} over the past 6 months.")
     except Exception as e:
         st.error("⚠️ Could not load chart. Please check the ticker.")
-        st.markdown("---")
 
 if section == "Finance Quiz":
     st.header("🎓 Finance Knowledge Quiz")
@@ -168,7 +171,6 @@ if section == "Finance Quiz":
             "answer": 1
         }
     ]
-st.markdown("---")
 
     for i, q in enumerate(questions):
         st.subheader(f"Q{i+1}: {q['question']}")
@@ -236,7 +238,6 @@ if section == "Topic Explorer":
         - Securitization pools loans into tradable securities.
         - Valuation adjustments account for credit, funding, and margin risks.
         """)
-        st.markdown("---")
 
 if section == "Document Analyzer":
     st.header("📁 Finance Document Analyzer")
