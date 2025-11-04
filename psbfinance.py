@@ -26,3 +26,6 @@ if section == "About Us":
     - N. Pooja  
     - Ira.Divine (Founder & Architect — mentioned here only)
     """)
+if section == "General Knowledge":
+    st.header("📚 General Finance Knowledge")
+    st.info("Hull's book summary will appear here once PyMuPDF is installed.")
