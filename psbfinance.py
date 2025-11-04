@@ -72,3 +72,32 @@ if section == "General Knowledge":
     ---
     This summary is designed to help you grasp the core mechanics of modern financial instruments and risk management — fast, clean, and practical.
     """)
+    if section == "Finance News":
+    st.header("📰 Latest Finance News")
+
+    st.markdown("""
+    Stay updated with the latest headlines from the world of finance, markets, and economics.
+
+    This section will soon include live news feeds, curated summaries, and trending topics.
+    """)
+
+import yfinance as yf  # Make sure this is at the top of your file
+
+if section == "Global Financials":
+    st.header("🌍 Global Financial Dashboard")
+
+    st.markdown("Explore global financial data including stock prices, currency exchange rates, and economic indicators.")
+
+    ticker = st.text_input("Enter a stock ticker (e.g., AAPL, TSLA, MSFT):")
+section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "Finance News"])
+
+    if ticker:
+        try:
+            stock = yf.Ticker(ticker)
+            data = stock.history(period="1d")
+            price = data["Close"].iloc[-1]
+            st.success(f"📈 Current price of {ticker.upper()}: ${price:.2f}")
+        except Exception as e:
+            st.error("⚠️ Could not retrieve stock data. Please check the ticker symbol.")
+section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "Finance News", "Global Financials"])
+
