@@ -4,7 +4,8 @@ import streamlit as st
 st.set_page_config(page_title="PSBFinance", layout="wide")
 
 # Sidebar navigation
-section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "Finance News"])
+section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "Finance News", "Global Financials", "Finance Quiz"])
+
 
 
 # Section 1: About Us
@@ -81,3 +82,85 @@ if section == "Finance News":
 
     This section will soon include live news feeds, curated summaries, and trending topics.
     """)
+import yfinance as yf  # Make sure this is at the top of your file
+
+if section == "Global Financials":
+    st.header("🌍 Global Financial Dashboard")
+
+    st.markdown("Explore global financial data including stock prices, currency exchange rates, and economic indicators.")
+
+    ticker = st.text_input("Enter a stock ticker (e.g., AAPL, TSLA, MSFT):")
+
+    if ticker:
+        try:
+            stock = yf.Ticker(ticker)
+            data = stock.history(period="1d")
+            price = data["Close"].iloc[-1]
+            st.success(f"📈 Current price of {ticker.upper()}: ${price:.2f}")
+        except Exception as e:
+            st.error("⚠️ Could not retrieve stock data. Please check the ticker symbol.")
+st.markdown("### 💱 Currency Exchange Rates")
+
+base_currency = st.selectbox("Base currency", ["USD", "EUR", "GBP", "JPY", "AUD"])
+target_currency = st.selectbox("Target currency", ["USD", "EUR", "GBP", "JPY", "AUD"])
+
+if base_currency and target_currency and base_currency != target_currency:
+    try:
+        pair = f"{base_currency}{target_currency}=X"
+        fx = yf.Ticker(pair)
+        fx_data = fx.history(period="1d")
+        fx_rate = fx_data["Close"].iloc[-1]
+        st.success(f"💱 1 {base_currency} = {fx_rate:.4f} {target_currency}")
+    except Exception as e:
+        st.error("⚠️ Could not retrieve exchange rate. Please try again.")
+st.markdown("### 📊 Stock Price Chart")
+
+chart_ticker = st.text_input("Enter a ticker for chart (e.g., AAPL, TSLA, MSFT):")
+
+if chart_ticker:
+    try:
+        chart_data = yf.Ticker(chart_ticker).history(period="6mo")
+        st.line_chart(chart_data["Close"])
+        st.caption(f"Showing closing prices for {chart_ticker.upper()} over the past 6 months.")
+    except Exception as e:
+        st.error("⚠️ Could not load chart. Please check the ticker.")
+if section == "Finance Quiz":
+    st.header("🎓 Finance Knowledge Quiz")
+
+    st.markdown("Test your understanding of key finance concepts with this short quiz.")
+
+    questions = [
+        {
+            "question": "What does a derivative derive its value from?",
+            "options": ["Government policy", "Underlying asset", "Company revenue", "Market sentiment"],
+            "answer": 1
+        },
+        {
+            "question": "Which strategy protects a seller using futures?",
+            "options": ["Long hedge", "Short hedge", "Put option", "Swap"],
+            "answer": 1
+        },
+        {
+            "question": "What does duration measure in bond pricing?",
+            "options": ["Credit risk", "Liquidity", "Sensitivity to interest rates", "Inflation exposure"],
+            "answer": 2
+        },
+        {
+            "question": "Which model is used to price options?",
+            "options": ["CAPM", "Black-Scholes", "Monte Carlo", "Binomial Tree"],
+            "answer": 1
+        },
+        {
+            "question": "What does VaR measure?",
+            "options": ["Expected return", "Downside risk", "Volatility", "Liquidity"],
+            "answer": 1
+        }
+    ]
+
+    for i, q in enumerate(questions):
+        st.subheader(f"Q{i+1}: {q['question']}")
+        selected = st.radio(f"Choose your answer:", q["options"], key=f"q{i}")
+        if selected == q["options"][q["answer"]]:
+            st.success("✅ Correct!")
+        else:
+            st.warning(f"❌ Incorrect. Correct answer: {q['options'][q['answer']]}")
