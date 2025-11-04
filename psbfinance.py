@@ -3,18 +3,9 @@ import pandas as pd
 import yfinance as yf
 import feedparser
 from datetime import datetime
-import streamlit as st
-import os
 
 # Page config
 st.set_page_config(page_title="PSBFinance", layout="wide")
-
-# Load homepage image
-if os.path.exists("CAPILOT IMAGE.png"):
-    st.image("CAPILOT IMAGE.png", use_column_width=True)
-else:
-    st.warning("Homepage image not found. Please upload 'CAPILOT IMAGE.png'.")
-
 
 # Sidebar navigation
 section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "Finance News", "Global Financials"])
@@ -23,11 +14,12 @@ section = st.sidebar.radio("📂 Navigate", ["About Us", "General Knowledge", "F
 if section == "About Us":
     st.title("🧠 Welcome to PSBFinance")
 
-    # Load homepage image
-    if os.path.exists("CAPLOIT_IMAGE.png"):
-        st.image("CAPLOIT_IMAGE.png", use_column_width=True)
+    # Upload image from laptop
+    uploaded_image = st.file_uploader("📷 Upload homepage image (PNG or JPG)", type=["png", "jpg", "jpeg"])
+    if uploaded_image:
+        st.image(uploaded_image, use_column_width=True)
     else:
-        st.warning("Homepage image not found. Please upload 'CAPLOIT_IMAGE.png'.")
+        st.info("Upload the CAPILOT IMAGE from your Documents folder to display it here.")
 
     st.markdown("""
     ### Built by students for students.
