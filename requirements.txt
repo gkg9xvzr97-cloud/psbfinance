@@ -8,4 +8,6 @@ matplotlib
 requests
 numpy
 feedparser
+streamlit
+PyMuPDF
 
