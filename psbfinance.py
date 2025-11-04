@@ -41,3 +41,36 @@ if section == "General Knowledge":
         st.info("This is a preview. Future versions will include topic-based summaries and definitions.")
     except Exception as e:
         st.warning("⚠️ Book not found or PyMuPDF not installed. Please check your repo and requirements.txt.")
+elif section == "Finance News":
+    st.header("📰 Latest Finance News")
+
+    st.markdown("""
+    Stay updated with the latest headlines from the world of finance, markets, and economics.
+    """)
+
+    st.info("This section will soon include live news feeds and curated summaries.")
+elif section == "Global Financials":
+    st.header("🌍 Global Financial Dashboard")
+
+    st.markdown("""
+    Explore global financial data including stock prices, currency exchange rates, and economic indicators.
+    """)
+
+    st.info("This section will soon include interactive charts and downloadable datasets.")
+import yfinance as yf
+
+elif section == "Global Financials":
+    st.header("🌍 Global Financial Dashboard")
+
+    st.markdown("Explore global financial data including stock prices, currency exchange rates, and economic indicators.")
+
+    ticker = st.text_input("Enter a stock ticker (e.g., AAPL, TSLA, MSFT):")
+
+    if ticker:
+        try:
+            stock = yf.Ticker(ticker)
+            data = stock.history(period="1d")
+            price = data["Close"].iloc[-1]
+            st.success(f"📈 Current price of {ticker.upper()}: ${price:.2f}")
+        except Exception as e:
+            st.error("⚠️ Could not retrieve stock data. Please check the ticker symbol.")
