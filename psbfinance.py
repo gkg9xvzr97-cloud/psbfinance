@@ -1,544 +1,444 @@
+# streamlit_app.py
+# PSP Finance: a student-friendly app to research companies, view/download financials, and browse filings
+# Run locally with:  
+#   pip install streamlit yfinance pandas requests plotly PyPDF2
+#   streamlit run streamlit_app.py
+
+import io
+import json
+import textwrap
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
+import pandas as pd
+import plotly.express as px
+import requests
 import streamlit as st
+from PyPDF2 import PdfReader
 
-# Page config
-st.set_page_config(page_title="PSBFinance", layout="wide")
+# -----------------------------
+# Page & global config
+# -----------------------------
+st.set_page_config(
+    page_title="PSP Finance",
+    page_icon="💹",
+    layout="wide",
+    menu_items={
+        "Get help": "mailto:support@example.com",
+        "Report a bug": "mailto:support@example.com",
+        "About": "PSP Finance — a learning project for finance students."
+    }
+)
 
-# Sidebar navigation
-section = st.sidebar.radio("📂 Navigate", [
-    "About Us", "General Knowledge", "Finance News", "Global Financials",
-    "Finance Quiz", "Topic Explorer", "Document Analyzer",
-    "Company Search", "SEC Filings", "Peer Comparison"
+# A friendly, consistent User-Agent for the SEC API (they require one)
+SEC_HEADERS = {
+    "User-Agent": "PSP-Finance/1.0 (student app; contact: student@example.com)",
+    "Accept-Encoding": "gzip, deflate",
+    "Host": "data.sec.gov"
+}
+
+# -----------------------------
+# Helpers
+# -----------------------------
+@st.cache_data(ttl=60 * 60)
+def wikipedia_summary(company_name: str) -> Tuple[Optional[str], Optional[str]]:
+    """Return (summary, image_url) from Wikipedia REST API if available."""
+    try:
+        # Search first
+        search = requests.get(
+            f"https://en.wikipedia.org/w/rest.php/v1/search/title?q={company_name}&limit=1"
+        ).json()
+        if not search.get("pages"):
+            return None, None
+        page = search["pages"][0]
+        page_id = page.get("id")
+        # Get summary
+        summary = requests.get(
+            f"https://en.wikipedia.org/api/rest_v1/page/summary/{page.get('title')}"
+        ).json()
+        desc = summary.get("extract")
+        img = None
+        if summary.get("thumbnail"):
+            img = summary["thumbnail"].get("source")
+        return desc, img
+    except Exception:
+        return None, None
+
+@st.cache_data(ttl=60 * 60)
+def yf_load_financials(ticker: str) -> Dict[str, pd.DataFrame]:
+    """Load annual financial statements via yfinance. Returns dict of DataFrames.
+    Keys: income, balance, cashflow.
+    """
+    import yfinance as yf
+
+    t = yf.Ticker(ticker)
+    # yfinance returns annual statements with columns as periods (DatetimeIndex)
+    income = t.income_stmt
+    balance = t.balance_sheet
+    cash = t.cashflow
+    # Normalize column labels to year (int)
+    def normalize(df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return pd.DataFrame()
+        cols = []
+        for c in df.columns:
+            try:
+                year = pd.to_datetime(c).year
+            except Exception:
+                # Sometimes yfinance returns plain strings; try slicing
+                try:
+                    year = int(str(c)[:4])
+                except Exception:
+                    year = str(c)
+            cols.append(year)
+        df2 = df.copy()
+        df2.columns = cols
+        # Sort columns ascending (oldest->newest)
+        df2 = df2.reindex(sorted(df2.columns), axis=1)
+        return df2
+
+    return {
+        "income": normalize(income),
+        "balance": normalize(balance),
+        "cashflow": normalize(cash),
+    }
+
+@st.cache_data(ttl=24 * 60 * 60)
+def sec_ticker_map() -> pd.DataFrame:
+    """Return SEC ticker<->CIK mapping as DataFrame."""
+    url = "https://www.sec.gov/files/company_tickers.json"
+    r = requests.get(url, headers=SEC_HEADERS)
+    r.raise_for_status()
+    raw = r.json()
+    rows = []
+    for _, v in raw.items():
+        rows.append({
+            "ticker": v.get("ticker"),
+            "cik": str(v.get("cik_str")).zfill(10),
+            "title": v.get("title"),
+        })
+    return pd.DataFrame(rows)
+
+@st.cache_data(ttl=60 * 60)
+def sec_company_submissions(cik: str) -> Dict:
+    """Fetch SEC submissions.json for a given CIK (zero-padded)."""
+    url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+    r = requests.get(url, headers=SEC_HEADERS)
+    r.raise_for_status()
+    return r.json()
+
+@st.cache_data(ttl=60 * 60)
+def build_filings_table(submissions: Dict, limit: int = 100) -> pd.DataFrame:
+    forms = submissions.get("filings", {}).get("recent", {})
+    if not forms:
+        return pd.DataFrame()
+    df = pd.DataFrame({
+        "accessionNumber": forms.get("accessionNumber", []),
+        "filingDate": forms.get("filingDate", []),
+        "reportDate": forms.get("reportDate", []),
+        "form": forms.get("form", []),
+        "primaryDoc": forms.get("primaryDocument", []),
+        "primaryDocDesc": forms.get("primaryDocDescription", []),
+    })
+    df = df.head(limit)
+    # Build doc URL
+    def doc_url(row):
+        acc = row["accessionNumber"].replace("-", "")
+        return f"https://www.sec.gov/Archives/edgar/data/{submissions.get('cik')}/{acc}/{row['primaryDoc']}"
+
+    df["url"] = df.apply(doc_url, axis=1)
+    return df
+
+@st.cache_data(ttl=60 * 60)
+def parse_pdf_bytes(file_bytes: bytes) -> str:
+    reader = PdfReader(io.BytesIO(file_bytes))
+    texts = []
+    for page in reader.pages:
+        try:
+            texts.append(page.extract_text() or "")
+        except Exception:
+            pass
+    return "\n".join(texts)
+
+# -----------------------------
+# Sidebar: App info & inputs
+# -----------------------------
+st.sidebar.image(
+    "https://images.unsplash.com/photo-1553729784-e91953dec042?q=80&w=1200&auto=format&fit=crop",
+    caption="Finance • Analysis • Learning",
+    use_column_width=True,
+)
+
+st.sidebar.title("PSP Finance")
+st.sidebar.caption(
+    "A student-built hub for researching companies, downloading financials, and learning the language of business."
+)
+
+default_ticker = st.sidebar.text_input("Default Ticker (optional)", value="AAPL")
+
+# -----------------------------
+# Header
+# -----------------------------
+st.markdown(
+    """
+    <style>
+        .big-title {font-size: 44px; font-weight: 800; margin-bottom: 0px}
+        .tagline {font-size: 16px; color: #5b5b5b;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+col1, col2 = st.columns([3, 2])
+with col1:
+    st.markdown('<div class="big-title">PSP Finance</div>', unsafe_allow_html=True)
+    st.markdown(
+        "<div class='tagline'>Built for students: simple research, fast downloads, clear learning.</div>",
+        unsafe_allow_html=True,
+    )
+with col2:
+    st.image(
+        "https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?q=80&w=1200&auto=format&fit=crop",
+        use_column_width=True,
+    )
+
+st.divider()
+
+# -----------------------------
+# Horizontal Navigation (Tabs)
+# -----------------------------
+TAB_HOME, TAB_KNOW, TAB_RESEARCH, TAB_FILINGS = st.tabs([
+    "🏠 Home",
+    "📚 Knowledge Base",
+    "🔎 Research",
+    "📄 Filings",
 ])
 
-  
+# -----------------------------
+# HOME
+# -----------------------------
+with TAB_HOME:
+    st.subheader("About the Project")
+    st.write(
+        """
+        **PSP Finance** is a student project created in a Business & Tech class. The goal: make it **easy** for finance
+        students to research a company, **download clean financial statements**, and learn the key ideas from class – all in one place.
+        """
+    )
 
-st.markdown("---")
+    st.markdown(
+        """
+        **Why this matters to us**  
+        As students, we often need quick access to income statements, balance sheets, and cash flows for multiple years. Downloading from different
+        websites is slow and messy. PSP Finance brings it together with one clean interface and export buttons.
+        """
+    )
 
+    st.info(
+        "Tip: Use the **Research** tab for company overviews & financials, and the **Filings** tab for official SEC documents (US-listed companies)."
+    )
 
-# Section 1: About Us
-if section == "About Us":
-    st.title("🧠 Welcome to PSBFinance")
-    st.image("https://raw.githubusercontent.com/gkyash97-st-cloud/psbfinance/main/capilotimage.png", use_column_width=True)
-    st.markdown("""
-    ### Built by students for students.
+# -----------------------------
+# KNOWLEDGE BASE
+# -----------------------------
+with TAB_KNOW:
+    st.subheader("Course Knowledge (Chapters 1–37)")
+    st.caption("Upload notes or textbooks (PDF) and search inside. Great for revision: options, derivatives, and more.")
 
-    PSBFinance is a learning dashboard designed to make finance accessible, visual, and practical.
+    uploaded = st.file_uploader("Upload PDF notes (optional)", type=["pdf"])
+    if uploaded is not None:
+        text = parse_pdf_bytes(uploaded.read())
+        st.session_state["kb_text"] = text
+        st.success(f"Loaded {uploaded.name} — {len(text):,} characters of text.")
 
-    **Team Members:**  
-    - Amelie-Nour  
-    - Sai Vinay  
-    - N. Pooja  
-    - Ira.Divine (Founder & Architect )
-    """)
+    query = st.text_input("Search your notes (keyword)")
+    kb_text = st.session_state.get("kb_text", "")
 
-# Section 2: General Knowledge
-if section == "General Knowledge":
-    st.header("📚 General Finance Knowledge")
+    if query and kb_text:
+        # Simple keyword hits (top 5 snippets)
+        snippets = []
+        lower = kb_text.lower()
+        q = query.lower()
+        start = 0
+        while True:
+            idx = lower.find(q, start)
+            if idx == -1 or len(snippets) >= 5:
+                break
+            s = max(0, idx - 120)
+            e = min(len(kb_text), idx + 120)
+            snippets.append("…" + kb_text[s:e].replace("\n", " ") + "…")
+            start = idx + len(q)
+        st.write("**Matches:**")
+        for i, sn in enumerate(snippets, 1):
+            st.write(f"{i}. {sn}")
+        if not snippets:
+            st.warning("No matches found.")
 
-    st.markdown("""
-    This section provides a practical overview of key financial concepts, contracts, strategies, and models — designed to help you understand how modern finance works.
+    with st.expander("Chapter Outline (placeholders you can edit)"):
+        cols = st.columns(3)
+        total = 37
+        for i in range(total):
+            with cols[i % 3]:
+                st.text_input(f"Chapter {i+1}", value=f"Topic {i+1}")
 
-    ### 🔹 Derivatives & Markets
-    - Derivatives derive value from assets like stocks, bonds, currencies, or commodities.
-    - Common types include forwards, futures, options, and swaps.
-    - Markets are either exchange-traded (standardized) or over-the-counter (customized).
+# -----------------------------
+# RESEARCH
+# -----------------------------
+with TAB_RESEARCH:
+    st.subheader("Company Research & Financials")
+    st.caption("Enter a company name for a quick overview (Wikipedia), and a ticker for financial statements (Yahoo Finance).")
 
-    ### 🔹 Hedging with Futures
-    - Futures contracts help manage risk for buyers and sellers.
-    - Hedging strategies use optimal ratios to reduce exposure to price changes.
-    - Equity portfolios can be hedged using index futures.
+    colA, colB = st.columns([2, 1])
+    with colA:
+        company_name = st.text_input("Company name (e.g., 'Nestlé', 'KPMG', 'Tesla')", value="Nestlé")
+    with colB:
+        ticker = st.text_input("Ticker (optional, for financials)", value=default_ticker)
 
-    ### 🔹 Interest Rates & Pricing
-    - Spot rates discount future cashflows; yield curves show rates over time.
-    - Duration and convexity measure bond sensitivity to interest rate changes.
-    - Forward prices reflect cost of carry, income, and rate differentials.
+    # Overview from Wikipedia
+    if company_name:
+        desc, img = wikipedia_summary(company_name)
+        if img:
+            st.image(img, width=240)
+        if desc:
+            st.write(desc)
+        else:
+            st.info("No Wikipedia summary found. Try a different spelling or a more specific name.")
 
-    ### 🔹 Swaps & Securitization
-    - Swaps exchange fixed and floating payments or currencies.
-    - Securitization pools loans into tradable securities.
-    - Valuation adjustments account for credit, funding, and margin risks.
-
-    ### 🔹 Options & Strategies
-    - Options give rights to buy/sell assets at set prices.
-    - Strategies include spreads, straddles, and protective puts.
-    - Pricing uses binomial trees and Black-Scholes models.
-
-    ### 🔹 Risk & Volatility
-    - Value at Risk and Expected Shortfall measure downside risk.
-    - Volatility models include EWMA and GARCH.
-    - Greeks (delta, gamma, theta, etc.) track option sensitivities.
-
-    ### 🔹 Credit & Exotic Derivatives
-    - Credit derivatives transfer default risk.
-    - Exotic options include barriers, lookbacks, and Asian options.
-    - Interest rate derivatives include caps, floors, and swaptions.
-
-    ### 🔹 Commodities & Real Options
-    - Commodity derivatives reflect storage costs and seasonal patterns.
-    - Real options value strategic flexibility in business decisions.
-    - Case studies highlight lessons from financial mishaps.
-
-    ---
-    This summary is designed to help you grasp the core mechanics of modern financial instruments and risk management — fast, clean, and practical.
-    """)
-
-if section == "Finance News":
-    st.header("📰 Latest Finance News")
-
-    st.markdown("""
-    Stay updated with the latest headlines from the world of finance, markets, and economics.
-
-    This section will soon include live news feeds, curated summaries, and trending topics.
-    """)
-import yfinance as yf  # Make sure this is at the top of your file
-
-if section == "Global Financials":
-    st.header("🌍 Global Financial Dashboard")
-
-    st.markdown("Explore global financial data including stock prices, currency exchange rates, and economic indicators.")
-
-    ticker = st.text_input("Enter a stock ticker (e.g., AAPL, TSLA, MSFT):")
-
+    # Financials via yfinance
     if ticker:
-        try:
-            stock = yf.Ticker(ticker)
-            data = stock.history(period="1d")
-            price = data["Close"].iloc[-1]
-            st.success(f"📈 Current price of {ticker.upper()}: ${price:.2f}")
-        except Exception as e:
-            st.error("⚠️ Could not retrieve stock data. Please check the ticker symbol.")
-st.markdown("### 💱 Currency Exchange Rates")
+        st.divider()
+        st.markdown(f"### Financial Statements — `{ticker}`")
+        fin = yf_load_financials(ticker)
 
-base_currency = st.selectbox("Base currency", ["USD", "EUR", "GBP", "JPY", "AUD"])
-target_currency = st.selectbox("Target currency", ["USD", "EUR", "GBP", "JPY", "AUD"])
+        def tidy(df: pd.DataFrame, label: str) -> pd.DataFrame:
+            if df.empty:
+                return df
+            dft = df.copy()
+            dft.index.name = "Line Item"
+            # Keep up to the last 10 columns (years)
+            if len(dft.columns) > 10:
+                dft = dft.iloc[:, -10:]
+            dft.attrs["label"] = label
+            return dft
 
-if base_currency and target_currency and base_currency != target_currency:
-    try:
-        pair = f"{base_currency}{target_currency}=X"
-        fx = yf.Ticker(pair)
-        fx_data = fx.history(period="1d")
-        fx_rate = fx_data["Close"].iloc[-1]
-        st.success(f"💱 1 {base_currency} = {fx_rate:.4f} {target_currency}")
-    except Exception as e:
-        st.error("⚠️ Could not retrieve exchange rate. Please try again.")
-st.markdown("### 📊 Stock Price Chart")
+        income = tidy(fin["income"], "Income Statement")
+        balance = tidy(fin["balance"], "Balance Sheet")
+        cash = tidy(fin["cashflow"], "Cash Flow")
 
-chart_ticker = st.text_input("Enter a ticker for chart (e.g., AAPL, TSLA, MSFT):")
-
-if chart_ticker:
-    try:
-        chart_data = yf.Ticker(chart_ticker).history(period="6mo")
-        st.line_chart(chart_data["Close"])
-        st.caption(f"Showing closing prices for {chart_ticker.upper()} over the past 6 months.")
-    except Exception as e:
-        st.error("⚠️ Could not load chart. Please check the ticker.")
-
-if section == "Finance Quiz":
-    st.header("🎓 Finance Knowledge Quiz")
-
-
-    st.markdown("Test your understanding of key finance concepts with this short quiz.")
-
-    questions = [
-        {
-            "question": "What does a derivative derive its value from?",
-            "options": ["Government policy", "Underlying asset", "Company revenue", "Market sentiment"],
-            "answer": 1
-        },
-        {
-            "question": "Which strategy protects a seller using futures?",
-            "options": ["Long hedge", "Short hedge", "Put option", "Swap"],
-            "answer": 1
-        },
-        {
-            "question": "What does duration measure in bond pricing?",
-            "options": ["Credit risk", "Liquidity", "Sensitivity to interest rates", "Inflation exposure"],
-            "answer": 2
-        },
-        {
-            "question": "Which model is used to price options?",
-            "options": ["CAPM", "Black-Scholes", "Monte Carlo", "Binomial Tree"],
-            "answer": 1
-        },
-        {
-            "question": "What does VaR measure?",
-            "options": ["Expected return", "Downside risk", "Volatility", "Liquidity"],
-            "answer": 1
-        }
-    ]
-
-    for i, q in enumerate(questions):
-        st.subheader(f"Q{i+1}: {q['question']}")
-        selected = st.radio(f"Choose your answer:", q["options"], key=f"q{i}")
-        if selected == q["options"][q["answer"]]:
-            st.success("✅ Correct!")
-        else:
-            st.warning(f"❌ Incorrect. Correct answer: {q['options'][q['answer']]}")
-if section == "Topic Explorer":
-    st.header("🧠 Explore Finance by Topic")
-
-    topic = st.selectbox("Choose a topic", [
-        "Options & Strategies",
-        "Risk & Volatility",
-        "Credit & Derivatives",
-        "Commodities & Real Options",
-        "Interest Rates & Pricing",
-        "Swaps & Securitization"
-    ])
-
-    if topic == "Options & Strategies":
-        st.markdown("""
-        ### 📘 Options & Strategies
-        - Options give rights to buy/sell assets at set prices.
-        - Strategies include spreads, straddles, and protective puts.
-        - Pricing uses binomial trees and Black-Scholes models.
-        """)
-
-    elif topic == "Risk & Volatility":
-        st.markdown("""
-        ### 📘 Risk & Volatility
-        - Value at Risk and Expected Shortfall measure downside risk.
-        - Volatility models include EWMA and GARCH.
-        - Greeks (delta, gamma, theta, etc.) track option sensitivities.
-        """)
-
-    elif topic == "Credit & Derivatives":
-        st.markdown("""
-        ### 📘 Credit & Derivatives
-        - Credit derivatives transfer default risk.
-        - CDS, synthetic CDOs, and TRS are key instruments.
-        - Risk management includes collateral, netting, and exposure modeling.
-        """)
-
-    elif topic == "Commodities & Real Options":
-        st.markdown("""
-        ### 📘 Commodities & Real Options
-        - Commodity derivatives reflect storage costs and seasonal patterns.
-        - Real options value strategic flexibility in business decisions.
-        - Used in energy, agriculture, and infrastructure planning.
-        """)
-
-    elif topic == "Interest Rates & Pricing":
-        st.markdown("""
-        ### 📘 Interest Rates & Pricing
-        - Spot rates discount future cashflows; yield curves show rates over time.
-        - Duration and convexity measure bond sensitivity to interest rate changes.
-        - Forward prices reflect cost of carry, income, and rate differentials.
-        """)
-
-    elif topic == "Swaps & Securitization":
-        st.markdown("""
-        ### 📘 Swaps & Securitization
-        - Swaps exchange fixed and floating payments or currencies.
-        - Securitization pools loans into tradable securities.
-        - Valuation adjustments account for credit, funding, and margin risks.
-        """)
-
-if section == "Document Analyzer":
-    st.header("📁 Finance Document Analyzer")
-
-    uploaded_file = st.file_uploader("Upload a finance-related document (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
-
-    if uploaded_file:
-        st.success(f"✅ Uploaded: {uploaded_file.name}")
-
-        file_text = uploaded_file.read().decode("utf-8", errors="ignore")
-
-        st.markdown("### 📄 Document Preview")
-        st.text_area("Content", file_text[:3000], height=300)
-
-        st.markdown("### 🧠 Summary")
-        st.write("This document discusses key financial concepts including derivatives, pricing models, risk management, and market structures. It may include formulas, examples, and strategic insights relevant to students and professionals.")
-st.markdown("""
----
-© 2025 PSBFinance — Built by students for students.
-""")
-import pandas as pd
-import yfinance as yf
-
-if section == "Company Search":
-    st.header("🏢 Company Search & Financials")
-
-query = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOG):", key="portfolio_input")
-
-if query:
-        try:
-            ticker = yf.Ticker(query)
-            info = ticker.info
-
-            st.subheader(f"📊 {info.get('longName', query)} ({query.upper()})")
-            st.markdown(f"**Sector:** {info.get('sector', 'N/A')}  \n**Industry:** {info.get('industry', 'N/A')}  \n**Market Cap:** {info.get('marketCap', 'N/A'):,}")
-
-            st.markdown("### 🧾 Financial Statements")
-
-            # Income Statement
-            st.markdown("#### 📈 Income Statement")
-            income = ticker.financials.T
-            st.dataframe(income)
-            st.download_button("Download Income Statement", income.to_csv().encode(), file_name="income_statement.csv")
-
-            # Balance Sheet
-            st.markdown("#### 🧾 Balance Sheet")
-            balance = ticker.balance_sheet.T
-            st.dataframe(balance)
-            st.download_button("Download Balance Sheet", balance.to_csv().encode(), file_name="balance_sheet.csv")
-
-            # Cash Flow
-            st.markdown("#### 💵 Cash Flow Statement")
-            cashflow = ticker.cashflow.T
-            st.dataframe(cashflow)
-            st.download_button("Download Cash Flow", cashflow.to_csv().encode(), file_name="cash_flow.csv")
-
-        except Exception as e:
-            st.error("⚠️ Could not retrieve company data. Please check the ticker or try again later.")
-import requests
-from bs4 import BeautifulSoup
-
-if section == "SEC Filings":
-    st.header("🧾 SEC Filings Viewer")
-
-    sec_ticker = st.text_input("Enter a company ticker (e.g., AAPL, MSFT, TSLA):", key="sec_filings_input")
-
-    if sec_ticker:
-        st.markdown("Showing latest 10-K, 10-Q, and 8-K filings from the SEC EDGAR database.")
-
-        base_url = f"https://www.sec.gov/cgi-bin/browse-edgar?CIK={sec_ticker}&type=&owner=exclude&count=10&action=getcompany"
-
-        try:
-            response = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"})
-            response.raise_for_status()  # ✅ Catch HTTP errors
-            soup = BeautifulSoup(response.text, "html.parser")
-            rows = soup.find_all("tr")
-
-            found = False
-            for row in rows:
-                cols = row.find_all("td")
-                if len(cols) >= 4:
-                    form_type = cols[0].text.strip()
-                    filing_date = cols[3].text.strip()
-                    link_tag = cols[1].find("a")
-                    if link_tag:
-                        filing_link = "https://www.sec.gov" + link_tag["href"]
-                        if form_type in ["10-K", "10-Q", "8-K"]:
-                            st.markdown(f"**{form_type}** filed on {filing_date} — [View Filing]({filing_link})")
-                            found = True
-
-            if not found:
-                st.warning("No recent 10-K, 10-Q, or 8-K filings found for this company.")
-
-        except requests.exceptions.RequestException:
-            st.error("⚠️ Network error while retrieving SEC filings.")
-        except Exception:
-            st.error("⚠️ Unexpected error. Please check the ticker or try again later.")
-
-
-if section == "Peer Comparison":
-    st.header("📊 Peer Comparison")
-
-    st.markdown("Compare key financial metrics across companies in the same sector.")
-
-    tickers = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOG):", key="peer_comparison_input")
-
-  if tickers:
-        try:
-            ticker_list = [t.strip().upper() for t in tickers.split(",")]
-            data = []
-
-            for t in ticker_list:
-                stock = yf.Ticker(t)
-                info = stock.info
-                data.append({
-                    "Ticker": t,
-                    "Company": info.get("shortName", "N/A"),
-                    "Sector": info.get("sector", "N/A"),
-                    "Market Cap": info.get("marketCap", 0),
-                    "PE Ratio": info.get("trailingPE", "N/A"),
-                    "Price": info.get("currentPrice", "N/A")
-                })
-
-            df = pd.DataFrame(data)
+        def show_and_download(df: pd.DataFrame):
+            if df.empty:
+                st.warning("Not available for this ticker.")
+                return
             st.dataframe(df)
+            csv = df.to_csv().encode("utf-8")
+            st.download_button(
+                label="Download CSV",
+                data=csv,
+                file_name=f"{ticker}_{df.attrs.get('label','table').replace(' ','_').lower()}.csv",
+                mime="text/csv",
+            )
 
-            st.download_button("Download Comparison", df.to_csv(index=False).encode(), file_name="peer_comparison.csv")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Income Statement (annual)**")
+            show_and_download(income)
+        with col2:
+            st.markdown("**Balance Sheet (annual)**")
+            show_and_download(balance)
+        st.markdown("**Cash Flow (annual)**")
+        show_and_download(cash)
 
-        except Exception as e:
-            st.error("⚠️ Could not retrieve comparison data. Please check the tickers.")
-if section == "Peer Comparison":
-    st.header("📊 Peer Comparison")
-
-    tickers = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOG):")
-
-    def calculate_risk(pe, market_cap):
-        if pe == "N/A" or market_cap == 0:
-            return "Unknown"
-        if pe > 30 or market_cap < 1e9:
-            return "⚠️ High Risk"
-        elif pe > 15:
-            return "🟡 Moderate Risk"
-        else:
-            return "🟢 Low Risk"
-
-    if tickers:
+        # Simple chart: Revenue & Net Income if present
         try:
-            ticker_list = [t.strip().upper() for t in tickers.split(",")]
-            data = []
-
-            for t in ticker_list:
-                stock = yf.Ticker(t)
-                info = stock.info
-                data.append({
-                    "Ticker": t,
-                    "Company": info.get("shortName", "N/A"),
-                    "Sector": info.get("sector", "N/A"),
-                    "Market Cap": info.get("marketCap", 0),
-                    "PE Ratio": info.get("trailingPE", "N/A"),
-                    "Price": info.get("currentPrice", "N/A")
-                })
-
-            df = pd.DataFrame(data)
-            df["Risk Score"] = df.apply(lambda row: calculate_risk(row["PE Ratio"], row["Market Cap"]), axis=1)
-
-            st.dataframe(df)
-            st.download_button("Download Comparison", df.to_csv(index=False).encode(), file_name="peer_comparison.csv")
-
-            st.markdown("### 🧠 AI Summary")
-            summary = f"""
-            The comparison includes {len(df)} companies across the {df['Sector'].mode()[0]} sector.
-            The highest market cap is {df['Market Cap'].max():,}, and the lowest PE ratio is {df['PE Ratio'].min()}.
-            {df.iloc[0]['Company']} leads in valuation, while {df.iloc[-1]['Company']} shows a lower price-to-earnings ratio.
-            """
-            st.info(summary)
-
+            rev_candidates = [
+                "Total Revenue",
+                "Operating Revenue",
+                "Revenue",
+            ]
+            ni_candidates = [
+                "Net Income",
+                "Net Income Common Stockholders",
+                "NetIncome",
+            ]
+            def pick_line(df: pd.DataFrame, names: List[str]) -> Optional[pd.Series]:
+                for n in names:
+                    if n in df.index:
+                        return df.loc[n]
+                return None
+            rev = pick_line(income, rev_candidates) if not income.empty else None
+            ni = pick_line(income, ni_candidates) if not income.empty else None
+            chart_df = pd.DataFrame()
+            if rev is not None:
+                chart_df["Revenue"] = rev
+            if ni is not None:
+                chart_df["Net Income"] = ni
+            if not chart_df.empty:
+                chart_df.index.name = "Year"
+                chart_df = chart_df.reset_index()
+                fig = px.line(chart_df, x="Year", y=list(chart_df.columns[1:]), markers=True)
+                fig.update_layout(height=380, title=f"{ticker} — Revenue & Net Income")
+                st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
-            st.error("⚠️ Could not retrieve comparison data. Please check the tickers.")
-import pandas as pd
-import yfinance as yf
+            st.caption(f"(Chart unavailable: {e})")
 
-if section == "Company Search":
-    st.header("🏢 Company Search & Financials")
+    st.info(
+        "Note: Private firms (e.g., KPMG) may lack public financial statements in Yahoo Finance. Use the **Overview** text for context or upload PDFs in the Knowledge tab."
+    )
 
-    query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):")
+# -----------------------------
+# FILINGS (SEC for US-listed)
+# -----------------------------
+with TAB_FILINGS:
+    st.subheader("SEC Filings (US-listed companies)")
+    st.caption("Search a US ticker to list recent 10-K, 10-Q, 8-K, S-1, etc., with links to the primary documents.")
 
-    def calculate_risk(pe, market_cap):
-        if pe == "N/A" or market_cap == 0:
-            return "Unknown"
-        if pe > 30 or market_cap < 1e9:
-            return "⚠️ High Risk"
-        elif pe > 15:
-            return "🟡 Moderate Risk"
-        else:
-            return "🟢 Low Risk"
+    sec_tk = st.text_input("US Ticker for SEC search", value=default_ticker)
 
-    if query:
+    if sec_tk:
         try:
-            ticker = yf.Ticker(query)
-            info = ticker.info
+            mapping = sec_ticker_map()
+            row = mapping[mapping["ticker"].str.upper() == sec_tk.upper()]
+            if row.empty:
+                st.warning("Ticker not found in SEC database. Try another (only US-listed).")
+            else:
+                cik = row.iloc[0]["cik"]
+                subs = sec_company_submissions(cik)
+                table = build_filings_table(subs, limit=100)
+                if table.empty:
+                    st.info("No recent filings found.")
+                else:
+                    # Filter common forms and show download
+                    forms_pick = st.multiselect(
+                        "Filter forms", ["10-K", "10-Q", "8-K", "S-1", "S-3", "424B2", "SD", "13D", "13G"],
+                        default=["10-K", "10-Q", "8-K"],
+                    )
+                    view = table[table["form"].isin(forms_pick)] if forms_pick else table
+                    # Pretty display with click-through links
+                    show = view[["filingDate", "reportDate", "form", "primaryDocDesc", "url"]].rename(
+                        columns={
+                            "filingDate": "Filed",
+                            "reportDate": "Report Date",
+                            "form": "Form",
+                            "primaryDocDesc": "Description",
+                            "url": "Document URL",
+                        }
+                    )
+                    st.dataframe(show, use_container_width=True)
 
-            st.subheader(f"📊 {info.get('longName', query)} ({query.upper()})")
-            st.markdown(f"""
-            **Sector:** {info.get('sector', 'N/A')}  
-            **Industry:** {info.get('industry', 'N/A')}  
-            **Market Cap:** {info.get('marketCap', 'N/A'):,}  
-            **Description:** {info.get('longBusinessSummary', 'N/A')}
-            """)
-
-            st.markdown("### 🧾 Financial Statements")
-
-            # Income Statement
-            st.markdown("#### 📈 Income Statement")
-            income = ticker.financials.T
-            st.dataframe(income)
-            st.download_button("Download Income Statement", income.to_csv().encode(), file_name="income_statement.csv")
-
-            # Balance Sheet
-            st.markdown("#### 🧾 Balance Sheet")
-            balance = ticker.balance_sheet.T
-            st.dataframe(balance)
-            st.download_button("Download Balance Sheet", balance.to_csv().encode(), file_name="balance_sheet.csv")
-
-            # Cash Flow
-            st.markdown("#### 💵 Cash Flow Statement")
-            cashflow = ticker.cashflow.T
-            st.dataframe(cashflow)
-            st.download_button("Download Cash Flow", cashflow.to_csv().encode(), file_name="cash_flow.csv")
-
-            # Risk Score
-            pe = info.get("trailingPE", "N/A")
-            market_cap = info.get("marketCap", 0)
-            risk = calculate_risk(pe, market_cap)
-            st.markdown(f"### 🧪 Risk Score: {risk}")
-
-            # AI Summary
-            st.markdown("### 🧠 AI Summary")
-            st.info(f"""
-            {info.get('longName', query)} operates in the {info.get('sector', 'N/A')} sector and specializes in {info.get('industry', 'N/A')}.
-            It has a market capitalization of ${info.get('marketCap', 0):,} and a PE ratio of {pe}.
-            Based on valuation and size, the company is classified as: {risk}.
-            """)
-
+                    csv = show.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        label="Download Filings List (CSV)",
+                        data=csv,
+                        file_name=f"{sec_tk}_sec_filings.csv",
+                        mime="text/csv",
+                    )
         except Exception as e:
-            st.error("⚠️ Could not retrieve company data. Please check the ticker or try again later.")
-st.text_input("Enter tickers", key="peer_input")
-st.text_input("Enter weights", key="portfolio_weights")
-import pandas as pd
-import yfinance as yf
+            st.error(f"SEC lookup failed: {e}")
 
-if section == "Company Search":
-    st.header("🏢 Company Search & Financials")
-
-    query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):", key="company_search_input")
-
-    def calculate_risk(pe, market_cap):
-        if pe == "N/A" or market_cap == 0:
-            return "Unknown"
-        if pe > 30 or market_cap < 1e9:
-            return "⚠️ High Risk"
-        elif pe > 15:
-            return "🟡 Moderate Risk"
-        else:
-            return "🟢 Low Risk"
-
-    if query:
-        try:
-            ticker = yf.Ticker(query)
-            info = ticker.info
-
-            st.subheader(f"📊 {info.get('longName', query)} ({query.upper()})")
-            st.markdown(f"""
-            **Sector:** {info.get('sector', 'N/A')}  
-            **Industry:** {info.get('industry', 'N/A')}  
-            **Market Cap:** {info.get('marketCap', 'N/A'):,}  
-            **Description:** {info.get('longBusinessSummary', 'N/A')}
-            """)
-
-            st.markdown("### 🧾 Financial Statements")
-
-            income = ticker.financials.T
-            st.markdown("#### 📈 Income Statement")
-            st.dataframe(income)
-            st.download_button("Download Income Statement", income.to_csv().encode(), file_name="income_statement.csv")
-
-            balance = ticker.balance_sheet.T
-            st.markdown("#### 🧾 Balance Sheet")
-            st.dataframe(balance)
-            st.download_button("Download Balance Sheet", balance.to_csv().encode(), file_name="balance_sheet.csv")
-
-            cashflow = ticker.cashflow.T
-            st.markdown("#### 💵 Cash Flow Statement")
-            st.dataframe(cashflow)
-            st.download_button("Download Cash Flow", cashflow.to_csv().encode(), file_name="cash_flow.csv")
-
-            pe = info.get("trailingPE", "N/A")
-            market_cap = info.get("marketCap", 0)
-            risk = calculate_risk(pe, market_cap)
-            st.markdown(f"### 🧪 Risk Score: {risk}")
-
-            st.markdown("### 🧠 AI Summary")
-            st.info(f"""
-            {info.get('longName', query)} operates in the {info.get('sector', 'N/A')} sector and specializes in {info.get('industry', 'N/A')}.
-            It has a market capitalization of ${info.get('marketCap', 0):,} and a PE ratio of {pe}.
-            Based on valuation and size, the company is classified as: {risk}.
-            """)
-
-        except Exception as e:
-            st.error("⚠️ Could not retrieve company data. Please check the ticker or try again later.")
+# -----------------------------
+# Footer
+# -----------------------------
+st.divider()
+st.caption(
+    "PSP Finance — built with Streamlit, Yahoo Finance, Wikipedia, and SEC data. Educational use only; not investment advice."
+)
