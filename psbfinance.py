@@ -257,8 +257,9 @@ import yfinance as yf
 
 if section == "Company Search":
     st.header("🏢 Company Search & Financials")
+query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):", key="company_search_input")
 
-    query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):")
+
 
     if query:
         try:
@@ -466,3 +467,5 @@ if section == "Company Search":
 
         except Exception as e:
             st.error("⚠️ Could not retrieve company data. Please check the ticker or try again later.")
+st.text_input("Enter tickers", key="peer_input")
+st.text_input("Enter weights", key="portfolio_weights")
