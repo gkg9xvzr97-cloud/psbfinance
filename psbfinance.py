@@ -9,6 +9,7 @@ section = st.sidebar.radio("📂 Navigate", [
     "Finance Quiz", "Topic Explorer", "Document Analyzer",
     "Company Search", "SEC Filings", "Peer Comparison"
 ])
+
   
 
 st.markdown("---")
@@ -258,7 +259,7 @@ import yfinance as yf
 if section == "Company Search":
     st.header("🏢 Company Search & Financials")
 
-query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):", key="company_search_input")
+query = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOG):", key="portfolio_input")
 
 if query:
         try:
@@ -293,10 +294,13 @@ if query:
 import requests
 from bs4 import BeautifulSoup
 
+import requests
+from bs4 import BeautifulSoup
+
 if section == "SEC Filings":
     st.header("🧾 SEC Filings Viewer")
 
-    sec_ticker = st.text_input("Enter a company ticker (e.g., AAPL, MSFT, TSLA):")
+    sec_ticker = st.text_input("Enter a company ticker (e.g., AAPL, MSFT, TSLA):", key="sec_filings_input")
 
     if sec_ticker:
         st.markdown("Showing latest 10-K, 10-Q, and 8-K filings from the SEC EDGAR database.")
@@ -320,14 +324,15 @@ if section == "SEC Filings":
                             st.markdown(f"**{form_type}** filed on {filing_date} — [View Filing]({filing_link})")
         except Exception as e:
             st.error("⚠️ Could not retrieve SEC filings. Please check the ticker or try again later.")
+
 if section == "Peer Comparison":
     st.header("📊 Peer Comparison")
 
     st.markdown("Compare key financial metrics across companies in the same sector.")
 
-    tickers = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOG):")
+    tickers = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOG):", key="peer_comparison_input")
 
-    if tickers:
+  if tickers:
         try:
             ticker_list = [t.strip().upper() for t in tickers.split(",")]
             data = []
@@ -468,3 +473,65 @@ if section == "Company Search":
             st.error("⚠️ Could not retrieve company data. Please check the ticker or try again later.")
 st.text_input("Enter tickers", key="peer_input")
 st.text_input("Enter weights", key="portfolio_weights")
+import pandas as pd
+import yfinance as yf
+
+if section == "Company Search":
+    st.header("🏢 Company Search & Financials")
+
+    query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):", key="company_search_input")
+
+    def calculate_risk(pe, market_cap):
+        if pe == "N/A" or market_cap == 0:
+            return "Unknown"
+        if pe > 30 or market_cap < 1e9:
+            return "⚠️ High Risk"
+        elif pe > 15:
+            return "🟡 Moderate Risk"
+        else:
+            return "🟢 Low Risk"
+
+    if query:
+        try:
+            ticker = yf.Ticker(query)
+            info = ticker.info
+
+            st.subheader(f"📊 {info.get('longName', query)} ({query.upper()})")
+            st.markdown(f"""
+            **Sector:** {info.get('sector', 'N/A')}  
+            **Industry:** {info.get('industry', 'N/A')}  
+            **Market Cap:** {info.get('marketCap', 'N/A'):,}  
+            **Description:** {info.get('longBusinessSummary', 'N/A')}
+            """)
+
+            st.markdown("### 🧾 Financial Statements")
+
+            income = ticker.financials.T
+            st.markdown("#### 📈 Income Statement")
+            st.dataframe(income)
+            st.download_button("Download Income Statement", income.to_csv().encode(), file_name="income_statement.csv")
+
+            balance = ticker.balance_sheet.T
+            st.markdown("#### 🧾 Balance Sheet")
+            st.dataframe(balance)
+            st.download_button("Download Balance Sheet", balance.to_csv().encode(), file_name="balance_sheet.csv")
+
+            cashflow = ticker.cashflow.T
+            st.markdown("#### 💵 Cash Flow Statement")
+            st.dataframe(cashflow)
+            st.download_button("Download Cash Flow", cashflow.to_csv().encode(), file_name="cash_flow.csv")
+
+            pe = info.get("trailingPE", "N/A")
+            market_cap = info.get("marketCap", 0)
+            risk = calculate_risk(pe, market_cap)
+            st.markdown(f"### 🧪 Risk Score: {risk}")
+
+            st.markdown("### 🧠 AI Summary")
+            st.info(f"""
+            {info.get('longName', query)} operates in the {info.get('sector', 'N/A')} sector and specializes in {info.get('industry', 'N/A')}.
+            It has a market capitalization of ${info.get('marketCap', 0):,} and a PE ratio of {pe}.
+            Based on valuation and size, the company is classified as: {risk}.
+            """)
+
+        except Exception as e:
+            st.error("⚠️ Could not retrieve company data. Please check the ticker or try again later.")
