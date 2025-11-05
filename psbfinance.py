@@ -2,7 +2,7 @@
 # PSP Finance — Working build with images & expanded knowledge library
 # -------------------------------------------------
 # Run:
-#   pip install streamlit yfinance pandas plotly
+#   pip install streamlit yfinance pandas plotly PyPDF2 requests
 #   streamlit run streamlit_app.py
 
 from typing import Dict, Optional, List, Tuple
@@ -52,34 +52,34 @@ TOPIC_IMAGES = {
     "Risk Management (inspired by Hull)": "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?q=80&w=1200&auto=format&fit=crop",
     "How to Trade — Safely for Students": "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?q=80&w=1200&auto=format&fit=crop",
     "1997 Asian Financial Crisis": "https://images.unsplash.com/photo-1533903345306-15d1c30952de?q=80&w=1200&auto=format&fit=crop",
-    "2000 Dot‑Com Bust": "https://images.unsplash.com/photo-1556157382-97eda2d62296?q=80&w=1200&auto=format&fit=crop",
+    "2000 Dot-Com Bust": "https://images.unsplash.com/photo-1556157382-97eda2d62296?q=80&w=1200&auto=format&fit=crop",
     "2008 Global Financial Crisis": "https://images.unsplash.com/photo-1476357471311-43c0db9fb2b4?q=80&w=1200&auto=format&fit=crop",
     "2010–2012 Eurozone Debt Crisis": "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?q=80&w=1200&auto=format&fit=crop",
-    "2020 COVID‑19 Market Shock": "https://images.unsplash.com/photo-1583324113626-70df0f4deaab?q=80&w=1200&auto=format&fit=crop",
+    "2020 COVID-19 Market Shock": "https://images.unsplash.com/photo-1583324113626-70df0f4deaab?q=80&w=1200&auto=format&fit=crop",
     "2023 U.S. Regional Bank Stress": "https://images.unsplash.com/photo-1459257868276-5e65389e2722?q=80&w=1200&auto=format&fit=crop",
 }
 
 # -------------------------
-# KNOWLEDGE LIBRARY CONTENT (expanded, event‑based)
+# KNOWLEDGE LIBRARY CONTENT (expanded, event-based)
 # -------------------------
 STORIES = {
     "Financial Crises — A Short Story": """
-**Pattern.** In calm times, credit expands and leverage builds. A shock (rate hikes, default waves, policy error) exposes weak balance sheets. Fire‑sales follow, liquidity vanishes, and losses feed on themselves.
+**Pattern.** In calm times, credit expands and leverage builds. A shock (rate hikes, default waves, policy error) exposes weak balance sheets. Fire-sales follow, liquidity vanishes, and losses feed on themselves.
 
-**Policy lessons.** Move fast to stabilize funding markets, protect deposits, and avoid pro‑cyclical tightening. Use lender‑of‑last‑resort tools and fiscal backstops carefully, paired with reforms that raise resilience.
+**Policy lessons.** Move fast to stabilize funding markets, protect deposits, and avoid pro-cyclical tightening. Use lender-of-last-resort tools and fiscal backstops carefully, paired with reforms that raise resilience.
 """,
     "1997 Asian Financial Crisis": """
 **What happened.** Several Asian economies with fixed/managed exchange rates (Thailand, Indonesia, South Korea) faced rapid capital outflows after currency pressures in 1997. Devaluations, corporate debt in foreign currency, and fragile banking systems led to recessions.
 
-**Why it mattered.** Currency mismatches turned FX moves into solvency problems. IMF programs emphasized stabilization and reforms. **Lesson:** avoid excessive short‑term foreign‑currency borrowing and build credible reserves.
+**Why it mattered.** Currency mismatches turned FX moves into solvency problems. IMF programs emphasized stabilization and reforms. **Lesson:** avoid excessive short-term foreign-currency borrowing and build credible reserves.
 """,
-    "2000 Dot‑Com Bust": """
+    "2000 Dot-Com Bust": """
 **What happened.** Tech valuations surged in the late 1990s despite thin profits. When growth expectations reset in 2000–2002, the Nasdaq fell ~75% from its peak. Funding dried up for unprofitable firms.
 
 **Lesson.** Distinguish structural innovation from speculative pricing. Cash generation and runway matter when markets tighten.
 """,
     "2008 Global Financial Crisis": """
-**What happened.** U.S. housing losses spread through highly levered banks and shadow banks holding mortgage‑linked securities. After Bear Stearns was rescued, **Lehman Brothers** failed (Sep 2008), freezing global credit. Central banks created emergency facilities; governments recapitalized banks.
+**What happened.** U.S. housing losses spread through highly levered banks and shadow banks holding mortgage-linked securities. After Bear Stearns was rescued, **Lehman Brothers** failed (Sep 2008), freezing global credit. Central banks created emergency facilities; governments recapitalized banks.
 
 **Reforms.** Higher-quality capital (CET1), leverage backstops, liquidity rules (LCR/NSFR), stress tests, and resolution plans ("living wills").
 """,
@@ -88,28 +88,28 @@ STORIES = {
 
 **Lesson.** Sovereign risk and bank risk can reinforce each other. A credible lender of last resort and fiscal backstops reduce tail scenarios.
 """,
-    "2020 COVID‑19 Market Shock": """
+    "2020 COVID-19 Market Shock": """
 **What happened.** A sudden global stop in March 2020 triggered a dash for cash: equities fell, credit spreads widened, and even Treasury markets were strained. Policymakers responded with rate cuts, asset purchases, and emergency lending programs; fiscal policy supported households and firms.
 
 **Lesson.** Liquidity can vanish even in core markets. Diverse funding and buffers matter.
 """,
     "2023 U.S. Regional Bank Stress": """
-**What happened.** A rapid rise in interest rates hurt banks holding long‑duration securities and concentrated deposits. **Silicon Valley Bank** and others faced runs; authorities guaranteed deposits at failed institutions and created liquidity facilities against high‑quality collateral.
+**What happened.** A rapid rise in interest rates hurt banks holding long-duration securities and concentrated deposits. **Silicon Valley Bank** and others faced runs; authorities guaranteed deposits at failed institutions and created liquidity facilities against high-quality collateral.
 
-**Lesson.** Interest‑rate risk and concentrated funding are dangerous together; hedging and diversified deposits are key.
+**Lesson.** Interest-rate risk and concentrated funding are dangerous together; hedging and diversified deposits are key.
 """,
     "Basel I → Basel III (Why it matters)": """
-- **Basel I (late 1980s):** simple risk‑weighted capital rules across countries.  
-- **Basel II:** more granular risk weights, use of internal models under supervision; introduced model‑risk concerns.  
-- **Basel III (post‑2008):** higher CET1, leverage ratio, liquidity coverage (**LCR**), net stable funding (**NSFR**), capital buffers for systemically important banks.
+- **Basel I (late 1980s):** simple risk-weighted capital rules across countries.  
+- **Basel II:** more granular risk weights, use of internal models under supervision; introduced model-risk concerns.  
+- **Basel III (post-2008):** higher CET1, leverage ratio, liquidity coverage (**LCR**), net stable funding (**NSFR**), capital buffers for systemically important banks.
 """,
     "Risk Management (inspired by Hull)": """
 - **Market risk:** control with limits, hedges (futures/options/swaps), VaR/Expected Shortfall, and scenario tests.  
 - **Credit risk:** price via spreads; mitigate with collateral, netting, and diversification.  
-- **Liquidity risk:** hold cash‑like assets, stagger maturities, test survival horizons.  
+- **Liquidity risk:** hold cash-like assets, stagger maturities, test survival horizons.  
 - **Operational risk:** strong controls and culture.
 
-**Derivatives for hedging:** futures (lock prices), options (insurance‑like payoff), swaps (exchange risk profiles). **Position sizing** and **stop‑loss** rules keep mistakes small.
+**Derivatives for hedging:** futures (lock prices), options (insurance-like payoff), swaps (exchange risk profiles). **Position sizing** and **stop-loss** rules keep mistakes small.
 """,
     "How to Trade — Safely for Students": """
 1) Thesis first (drivers & catalysts).  
@@ -126,13 +126,18 @@ STORIES = {
 @st.cache_data(ttl=60*60)
 def wikipedia_summary(company_name: str) -> Tuple[Optional[str], Optional[str]]:
     try:
-        s = requests.get(f"https://www.wikipedia.org/w/index.php?search={company_name}", timeout=10)
-        # Use REST summary for the first title hit
-        sr = requests.get(f"https://en.wikipedia.org/w/rest.php/v1/search/title?q={company_name}&limit=1", timeout=10).json()
+        # Find first title
+        sr = requests.get(
+            f"https://en.wikipedia.org/w/rest.php/v1/search/title?q={company_name}&limit=1",
+            timeout=10
+        ).json()
         if not sr.get("pages"):
             return None, None
         title = sr["pages"][0]["title"]
-        js = requests.get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}", timeout=10).json()
+        js = requests.get(
+            f"https://en.wikipedia.org/api/rest_v1/page/summary/{title}",
+            timeout=10
+        ).json()
         desc = js.get("extract")
         img = js.get("thumbnail", {}).get("source")
         return desc, img
@@ -142,8 +147,8 @@ def wikipedia_summary(company_name: str) -> Tuple[Optional[str], Optional[str]]:
 @st.cache_data(ttl=60*60)
 def parse_pdf_bytes(file_bytes: bytes) -> str:
     reader = PdfReader(io.BytesIO(file_bytes))
-    text = "
-".join([(p.extract_text() or "") for p in reader.pages])
+    # FIX: use "\\n".join, not a broken literal
+    text = "\n".join([(p.extract_text() or "") for p in reader.pages])
     return text
 
 # -------------------------
@@ -193,7 +198,7 @@ def load_history(tickers: List[str], period: str = "5y") -> pd.DataFrame:
 # -------------------------
 st.sidebar.image(IMG["sidebar"], caption="Finance • Analysis • Learning", use_column_width=True)
 st.sidebar.title("PSP Finance")
-st.sidebar.caption("Student‑built finance learning platform.")
+st.sidebar.caption("Student-built finance learning platform.")
 q = st.sidebar.text_input("Search company (name or ticker)", value="Apple")
 
 col1, col2 = st.columns([3, 2])
@@ -237,16 +242,18 @@ with TAB_KNOW:
     query = st.text_input("Search uploaded notes (keyword)")
     kb_text = st.session_state.get("kb_text", "")
     if query and kb_text:
-        lower = kb_text.lower(); ql = query.lower()
+        lower = kb_text.lower()
+        ql = query.lower()
         hits = []
         start = 0
         while True:
             idx = lower.find(ql, start)
             if idx == -1 or len(hits) >= 5:
                 break
-            s = max(0, idx-120); e = min(len(kb_text), idx+120)
-            snippet = "…" + kb_text[s:e].replace("
-"," ") + "…"
+            s = max(0, idx-120)
+            e = min(len(kb_text), idx+120)
+            # FIX: use "\\n" in replace, not a literal broken newline
+            snippet = "…" + kb_text[s:e].replace("\n", " ") + "…"
             hits.append(snippet)
             start = idx + len(ql)
         st.write("**Matches:**")
@@ -321,7 +328,7 @@ with TAB_AI:
     st.subheader("📅 Historical Performance Charts & 🧠 Insights")
     st.image(IMG["ai"], use_column_width=True)
 
-    raw = st.text_input("Tickers (comma‑separated)", value="AAPL, MSFT, NVDA").strip()
+    raw = st.text_input("Tickers (comma-separated)", value="AAPL, MSFT, NVDA").strip()
     tickers = [t.strip().upper() for t in raw.split(',') if t.strip()]
 
     hist = load_history(tickers, period="5y")
@@ -329,7 +336,7 @@ with TAB_AI:
         st.info("No price data returned. Try different tickers.")
     else:
         norm = hist / hist.iloc[0] * 100
-        fig = px.line(norm, title="Normalized 5‑Year Performance (100 = start)")
+        fig = px.line(norm, title="Normalized 5-Year Performance (100 = start)")
         st.plotly_chart(fig, use_container_width=True)
 
         # Simple insights
