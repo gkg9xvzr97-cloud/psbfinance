@@ -257,6 +257,7 @@ import yfinance as yf
 
 if section == "Company Search":
     st.header("🏢 Company Search & Financials")
+
 query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):", key="company_search_input")
 
 
