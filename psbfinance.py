@@ -388,52 +388,31 @@ with TAB_RESEARCH:
 # -----------------------------
 # FILINGS (SEC for US-listed)
 # -----------------------------
-with TAB_FILINGS:
-    st.subheader("SEC Filings (US-listed companies)")
-    st.caption("Search a US ticker to list recent 10-K, 10-Q, 8-K, S-1, etc., with links to the primary documents.")
-
-    sec_tk = st.text_input("US Ticker for SEC search", value=default_ticker)
-
-    if sec_tk:
+@st.cache_data(ttl=24 * 60 * 60)
+def sec_ticker_map() -> pd.DataFrame:
+    """Return SEC ticker<->CIK mapping as DataFrame (updated source)."""
+    urls = [
+        "https://www.sec.gov/files/company_tickers_exchange.json",  # newer, more complete
+        "https://www.sec.gov/files/company_tickers.json"  # fallback
+    ]
+    for url in urls:
         try:
-            mapping = sec_ticker_map()
-            row = mapping[mapping["ticker"].str.upper() == sec_tk.upper()]
-            if row.empty:
-                st.warning("Ticker not found in SEC database. Try another (only US-listed).")
-            else:
-                cik = row.iloc[0]["cik"]
-                subs = sec_company_submissions(cik)
-                table = build_filings_table(subs, limit=100)
-                if table.empty:
-                    st.info("No recent filings found.")
-                else:
-                    # Filter common forms and show download
-                    forms_pick = st.multiselect(
-                        "Filter forms", ["10-K", "10-Q", "8-K", "S-1", "S-3", "424B2", "SD", "13D", "13G"],
-                        default=["10-K", "10-Q", "8-K"],
-                    )
-                    view = table[table["form"].isin(forms_pick)] if forms_pick else table
-                    # Pretty display with click-through links
-                    show = view[["filingDate", "reportDate", "form", "primaryDocDesc", "url"]].rename(
-                        columns={
-                            "filingDate": "Filed",
-                            "reportDate": "Report Date",
-                            "form": "Form",
-                            "primaryDocDesc": "Description",
-                            "url": "Document URL",
-                        }
-                    )
-                    st.dataframe(show, use_container_width=True)
-
-                    csv = show.to_csv(index=False).encode("utf-8")
-                    st.download_button(
-                        label="Download Filings List (CSV)",
-                        data=csv,
-                        file_name=f"{sec_tk}_sec_filings.csv",
-                        mime="text/csv",
-                    )
+            r = requests.get(url, headers=SEC_HEADERS, timeout=10)
+            if r.status_code == 200:
+                raw = r.json()
+                rows = []
+                for _, v in raw.items():
+                    rows.append({
+                        "ticker": v.get("ticker"),
+                        "cik": str(v.get("cik_str")).zfill(10),
+                        "title": v.get("title"),
+                    })
+                return pd.DataFrame(rows)
         except Exception as e:
-            st.error(f"SEC lookup failed: {e}")
+            print(f"Failed {url}: {e}")
+    st.warning("⚠️ Could not fetch SEC ticker map. SEC site may be down.")
+    return pd.DataFrame(columns=["ticker", "cik", "title"])
+
 
 # -----------------------------
 # Footer
