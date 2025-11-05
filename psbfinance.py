@@ -388,6 +388,8 @@ with TAB_RESEARCH:
 # -----------------------------
 # FILINGS (SEC for US-listed)
 # -----------------------------
+requests.adapters.DEFAULT_RETRIES = 5
+
 @st.cache_data(ttl=24 * 60 * 60)
 def sec_ticker_map() -> pd.DataFrame:
     """Return SEC ticker<->CIK mapping as DataFrame (updated source)."""
