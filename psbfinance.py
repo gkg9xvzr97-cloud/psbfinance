@@ -260,9 +260,7 @@ if section == "Company Search":
 
 query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):", key="company_search_input")
 
-
-
-    if query:
+if query:
         try:
             ticker = yf.Ticker(query)
             info = ticker.info
