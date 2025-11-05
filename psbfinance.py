@@ -28,7 +28,7 @@ if section == "About Us":
     - Amelie-Nour  
     - Sai Vinay  
     - N. Pooja  
-    - Ira.Divine (Founder & Architect — mentioned here only)
+    - Ira.Divine (Founder & Architect )
     """)
 
 # Section 2: General Knowledge
@@ -294,9 +294,6 @@ if query:
 import requests
 from bs4 import BeautifulSoup
 
-import requests
-from bs4 import BeautifulSoup
-
 if section == "SEC Filings":
     st.header("🧾 SEC Filings Viewer")
 
@@ -309,9 +306,11 @@ if section == "SEC Filings":
 
         try:
             response = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"})
+            response.raise_for_status()  # ✅ Catch HTTP errors
             soup = BeautifulSoup(response.text, "html.parser")
             rows = soup.find_all("tr")
 
+            found = False
             for row in rows:
                 cols = row.find_all("td")
                 if len(cols) >= 4:
@@ -322,8 +321,16 @@ if section == "SEC Filings":
                         filing_link = "https://www.sec.gov" + link_tag["href"]
                         if form_type in ["10-K", "10-Q", "8-K"]:
                             st.markdown(f"**{form_type}** filed on {filing_date} — [View Filing]({filing_link})")
-        except Exception as e:
-            st.error("⚠️ Could not retrieve SEC filings. Please check the ticker or try again later.")
+                            found = True
+
+            if not found:
+                st.warning("No recent 10-K, 10-Q, or 8-K filings found for this company.")
+
+        except requests.exceptions.RequestException:
+            st.error("⚠️ Network error while retrieving SEC filings.")
+        except Exception:
+            st.error("⚠️ Unexpected error. Please check the ticker or try again later.")
+
 
 if section == "Peer Comparison":
     st.header("📊 Peer Comparison")
