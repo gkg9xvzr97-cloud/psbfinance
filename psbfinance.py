@@ -9,7 +9,7 @@ section = st.sidebar.radio("📂 Navigate", [
     "Finance Quiz", "Topic Explorer", "Document Analyzer",
     "Company Search", "SEC Filings", "Peer Comparison"
 ])
-
+  
 
 st.markdown("---")
 
@@ -399,3 +399,70 @@ if section == "Peer Comparison":
 
         except Exception as e:
             st.error("⚠️ Could not retrieve comparison data. Please check the tickers.")
+import pandas as pd
+import yfinance as yf
+
+if section == "Company Search":
+    st.header("🏢 Company Search & Financials")
+
+    query = st.text_input("Enter a company name or ticker (e.g., AAPL, MSFT, TSLA):")
+
+    def calculate_risk(pe, market_cap):
+        if pe == "N/A" or market_cap == 0:
+            return "Unknown"
+        if pe > 30 or market_cap < 1e9:
+            return "⚠️ High Risk"
+        elif pe > 15:
+            return "🟡 Moderate Risk"
+        else:
+            return "🟢 Low Risk"
+
+    if query:
+        try:
+            ticker = yf.Ticker(query)
+            info = ticker.info
+
+            st.subheader(f"📊 {info.get('longName', query)} ({query.upper()})")
+            st.markdown(f"""
+            **Sector:** {info.get('sector', 'N/A')}  
+            **Industry:** {info.get('industry', 'N/A')}  
+            **Market Cap:** {info.get('marketCap', 'N/A'):,}  
+            **Description:** {info.get('longBusinessSummary', 'N/A')}
+            """)
+
+            st.markdown("### 🧾 Financial Statements")
+
+            # Income Statement
+            st.markdown("#### 📈 Income Statement")
+            income = ticker.financials.T
+            st.dataframe(income)
+            st.download_button("Download Income Statement", income.to_csv().encode(), file_name="income_statement.csv")
+
+            # Balance Sheet
+            st.markdown("#### 🧾 Balance Sheet")
+            balance = ticker.balance_sheet.T
+            st.dataframe(balance)
+            st.download_button("Download Balance Sheet", balance.to_csv().encode(), file_name="balance_sheet.csv")
+
+            # Cash Flow
+            st.markdown("#### 💵 Cash Flow Statement")
+            cashflow = ticker.cashflow.T
+            st.dataframe(cashflow)
+            st.download_button("Download Cash Flow", cashflow.to_csv().encode(), file_name="cash_flow.csv")
+
+            # Risk Score
+            pe = info.get("trailingPE", "N/A")
+            market_cap = info.get("marketCap", 0)
+            risk = calculate_risk(pe, market_cap)
+            st.markdown(f"### 🧪 Risk Score: {risk}")
+
+            # AI Summary
+            st.markdown("### 🧠 AI Summary")
+            st.info(f"""
+            {info.get('longName', query)} operates in the {info.get('sector', 'N/A')} sector and specializes in {info.get('industry', 'N/A')}.
+            It has a market capitalization of ${info.get('marketCap', 0):,} and a PE ratio of {pe}.
+            Based on valuation and size, the company is classified as: {risk}.
+            """)
+
+        except Exception as e:
+            st.error("⚠️ Could not retrieve company data. Please check the ticker or try again later.")
