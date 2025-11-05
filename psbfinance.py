@@ -352,58 +352,44 @@ if section == "Peer Comparison":
         except Exception as e:
             st.error("⚠️ Could not retrieve comparison data. Please check the tickers.")
 if section == "Peer Comparison":
-    # ... existing comparison code ...
+    st.header("📊 Peer Comparison")
 
-    st.markdown("### 🧠 AI Summary")
+    tickers = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOG):")
 
-    if not df.empty:
-        summary = f"""
-        The comparison includes {len(df)} companies across the {df['Sector'].mode()[0]} sector.
-        The highest market cap is {df['Market Cap'].max():,}, and the lowest PE ratio is {df['PE Ratio'].min()}.
-        {df.iloc[0]['Company']} leads in valuation, while {df.iloc[-1]['Company']} shows a lower price-to-earnings ratio.
-        """
-        st.info(summary)
-st.markdown("### 🧪 Risk Score")
-
-def calculate_risk(pe, market_cap):
-    if pe == "N/A" or market_cap == 0:
-        return "Unknown"
-    if pe > 30 or market_cap < 1e9:
-        return "⚠️ High Risk"
-    elif pe > 15:
-        return "🟡 Moderate Risk"
-    else:
-        return "🟢 Low Risk"
-
-df["Risk Score"] = df.apply(lambda row: calculate_risk(row["PE Ratio"], row["Market Cap"]), axis=1)
-st.dataframe(df)
-section = st.sidebar.radio("📂 Navigate", [..., "Portfolio Tracker"])
-if section == "Portfolio Tracker":
-    st.header("📈 Portfolio Builder")
-
-    tickers = st.text_input("Enter tickers (e.g., AAPL, MSFT, TSLA):")
-    weights = st.text_input("Enter weights (e.g., 0.4, 0.3, 0.3):")
-
-    if tickers and weights:
+    if tickers:
         try:
             ticker_list = [t.strip().upper() for t in tickers.split(",")]
-            weight_list = [float(w.strip()) for w in weights.split(",")]
+            data = []
 
-            if len(ticker_list) != len(weight_list):
-                st.error("⚠️ Number of tickers and weights must match.")
-            else:
-                data = []
-                for t in ticker_list:
-                    stock = yf.Ticker(t)
-                    price = stock.info.get("currentPrice", 0)
-                    data.append({"Ticker": t, "Price": price})
+            for t in ticker_list:
+                stock = yf.Ticker(t)
+                info = stock.info
+                data.append({
+                    "Ticker": t,
+                    "Company": info.get("shortName", "N/A"),
+                    "Sector": info.get("sector", "N/A"),
+                    "Market Cap": info.get("marketCap", 0),
+                    "PE Ratio": info.get("trailingPE", "N/A"),
+                    "Price": info.get("currentPrice", "N/A")
+                })
 
-                df = pd.DataFrame(data)
-                df["Weight"] = weight_list
-                df["Weighted Value"] = df["Price"] * df["Weight"]
-                st.dataframe(df)
+            df = pd.DataFrame(data)
+            st.dataframe(df)
 
-                total_value = df["Weighted Value"].sum()
-                st.success(f"📊 Portfolio Value (weighted): ${total_value:.2f}")
-        except Exception as e:
-            st.error("⚠️ Could not calculate portfolio. Check inputs.")
+            st.download_button("Download Comparison", df.to_csv(index=False).encode(), file_name="peer_comparison.csv")
+
+            # ✅ AI Summary
+            st.markdown("### 🧠 AI Summary")
+            summary = f"""
+            The comparison includes {len(df)} companies across the {df['Sector'].mode()[0]} sector.
+            The highest market cap is {df['Market Cap'].max():,}, and the lowest PE ratio is {df['PE Ratio'].min()}.
+            {df.iloc[0]['Company']} leads in valuation, while {df.iloc[-1]['Company']} shows a lower price-to-earnings ratio.
+            """
+            st.info(summary)
+
+            # ✅ Risk Score Function
+            def calculate_risk(pe, market_cap):
+                if pe == "N/A" or market_cap == 0:
+                    return "Unknown"
+                if pe > 30 or market_cap < 1e9:
+                    return "⚠️ High Risk"
