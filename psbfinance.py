@@ -356,6 +356,16 @@ if section == "Peer Comparison":
 
     tickers = st.text_input("Enter tickers separated by commas (e.g., AAPL, MSFT, GOOG):")
 
+    def calculate_risk(pe, market_cap):
+        if pe == "N/A" or market_cap == 0:
+            return "Unknown"
+        if pe > 30 or market_cap < 1e9:
+            return "⚠️ High Risk"
+        elif pe > 15:
+            return "🟡 Moderate Risk"
+        else:
+            return "🟢 Low Risk"
+
     if tickers:
         try:
             ticker_list = [t.strip().upper() for t in tickers.split(",")]
@@ -374,11 +384,11 @@ if section == "Peer Comparison":
                 })
 
             df = pd.DataFrame(data)
-            st.dataframe(df)
+            df["Risk Score"] = df.apply(lambda row: calculate_risk(row["PE Ratio"], row["Market Cap"]), axis=1)
 
+            st.dataframe(df)
             st.download_button("Download Comparison", df.to_csv(index=False).encode(), file_name="peer_comparison.csv")
 
-            # ✅ AI Summary
             st.markdown("### 🧠 AI Summary")
             summary = f"""
             The comparison includes {len(df)} companies across the {df['Sector'].mode()[0]} sector.
@@ -387,9 +397,5 @@ if section == "Peer Comparison":
             """
             st.info(summary)
 
-            # ✅ Risk Score Function
-            def calculate_risk(pe, market_cap):
-                if pe == "N/A" or market_cap == 0:
-                    return "Unknown"
-                if pe > 30 or market_cap < 1e9:
-                    return "⚠️ High Risk"
+        except Exception as e:
+            st.error("⚠️ Could not retrieve comparison data. Please check the tickers.")
