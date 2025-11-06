@@ -206,20 +206,15 @@ if selection == "AI Summary & PDF":
             text_data += page.extract_text() + "\n"
         st.write("Extracted text (truncated):", text_data[:500] + "...")
         
-        openai.api_key = api_key
-        if st.button("Generate Summary"):
-            # Call OpenAI API to summarize (example using ChatCompletion)
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "Summarize the following financial document."},
-                    {"role": "user", "content": text_data[:4000]}  # truncate if too long
-                ],
-                max_tokens=300
-            )
-            summary = response.choices[0].message.content.strip()
-            st.subheader("AI Summary")
-            st.write(summary)
+        openai.api_key = import openai
+import streamlit as st
+
+# Verify that the API key is accessible
+if "openai" in st.secrets and st.secrets["openai"].get("api_key"):
+    st.success("✅ OpenAI key loaded securely.")
+else:
+    st.error("❌ OpenAI key not found. Check your secrets.toml or Streamlit Cloud settings.")
+
 # Knowledge Library
 if selection == "Knowledge Library":
     st.header("Knowledge Library")
