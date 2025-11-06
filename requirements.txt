@@ -13,6 +13,11 @@ PyMuPDF
 beautifulsoup4
 plotly
 PyPDF2
+openai
+scikit-learn
+pillow
+
+
 
 
 
