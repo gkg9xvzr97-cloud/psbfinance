@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.express as px
+import feedparser
 
 # --------- CONFIG ---------
 st.set_page_config(page_title="PSP Finance", layout="wide")
@@ -74,4 +75,26 @@ elif tabs == "Compare Companies":
             last = norm.iloc[-1]
             best = last.idxmax()
             st.success(f"Top price return: **{best}** with a {last[best]-100:.2f}% gain over 5 years.")
+elif tabs == "Finance News":
+    st.header("Finance News — Real-Time Headlines from Trusted Sources")
+
+    rss_feeds = {
+        "Bloomberg": "https://www.bloomberg.com/feed/podcast/etf-report.xml",
+        "Reuters": "http://feeds.reuters.com/reuters/businessNews",
+        "WSJ Markets": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"
+    }
+
+    selected = st.selectbox("Choose a Finance News Source", list(rss_feeds.keys()))
+
+    feed_url = rss_feeds[selected]
+    parsed = feedparser.parse(feed_url)
+
+    if parsed.entries:
+        for entry in parsed.entries[:8]:
+            st.markdown(f"**[{entry.title}]({entry.link})**")
+            st.caption(entry.published if 'published' in entry else "")
+            st.write(entry.summary if 'summary' in entry else "")
+            st.markdown("---")
+    else:
+        st.info("No recent articles found.")
 
