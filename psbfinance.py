@@ -1,4 +1,8 @@
 import streamlit as st
+import yfinance as yf
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Set page config
 st.set_page_config(page_title="PSP Finance", layout="wide")
@@ -26,9 +30,6 @@ section = st.sidebar.radio("📂 Navigate", [
     "News Feed",
     "Private Company Insights"
 ])
-import yfinance as yf
-import pandas as pd
-
 if section == "Company Search":
     st.header("🏢 Company Search")
 
@@ -78,8 +79,6 @@ if section == "Company Search":
             market_cap = info.get("marketCap", 0)
             risk = calculate_risk(pe, market_cap)
             st.markdown(f"### 🧪 Risk Score: {risk}")
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 # Sample data for Apple (replace with real values if available)
 sector_pe_avg = 25
