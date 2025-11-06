@@ -42,10 +42,48 @@ if tabs == " Home":
         """)
     with col2:
         st.image("https://images.unsplash.com/photo-1553729784-e91953dec042?q=80&w=500&auto=format&fit=crop", width=280)
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.express as px
 
+# --------- CONFIG ---------
+st.set_page_config(page_title="PSP Finance", layout="wide")
+
+# --------- SIDEBAR NAVIGATION ---------
+st.sidebar.title("PSP Finance")
+st.sidebar.caption("Explore professional tools for finance students and analysts.")
+st.sidebar.markdown("---")
+
+tabs = st.sidebar.radio("📁 Navigate", [
+    "🏠 Home",
+    "🔍 Ticker Research",
+    "📊 Compare Companies"
+])
+
+# --------- HOME TAB ---------
+if tabs == "🏠 Home":
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.title("Welcome to PSP Finance")
+        st.markdown("""
+        PSP Finance is a research-grade financial analytics platform created by students, for students and analysts.
+
+        **What You Can Do:**
+        - 📊 Research public and private companies
+        - 📈 Visualize income, balance, and cash flow with explainable ratios
+        - 📂 Upload and monitor multiple portfolios
+        - 📰 Read real-time financial news via RSS feeds
+        - 🧮 Compare companies side-by-side with scoring
+        - 💱 Track FX & Derivative exposures
+        - 🧠 Learn from history: crises, Basel rules, and financial theory
+
+        > PSP Finance helps you **analyze professionally, learn deeply, and report clearly**.
+        """)
+    with col2:
+        st.image("https://images.unsplash.com/photo-1553729784-e91953dec042?q=80&w=500&auto=format&fit=crop", width=280)
+
+# --------- TICKER RESEARCH TAB ---------
 elif tabs == "🔍 Ticker Research":
     st.header("Ticker Research — Company Dashboard")
 
@@ -62,7 +100,6 @@ elif tabs == "🔍 Ticker Research":
             col1.metric("Current Price", f"${info.get('currentPrice', 'N/A')}", delta=f"{info.get('regularMarketChangePercent', 0):.2f}%")
             col2.metric("Market Cap", f"${info.get('marketCap', 0) / 1e9:.2f}B")
 
-            # Revenue vs Net Income Chart
             st.markdown("### Revenue vs Net Income")
             fin = stock.financials.T
             if 'Total Revenue' in fin.columns and 'Net Income' in fin.columns:
@@ -76,7 +113,6 @@ elif tabs == "🔍 Ticker Research":
             else:
                 st.info("Financial data incomplete on Yahoo Finance.")
 
-            # Expandable Explainable Ratios
             st.markdown("### 🔍 Explainable Financial Ratios")
             with st.expander("Profitability"):
                 st.write(f"**ROE:** {info.get('returnOnEquity', 0)*100:.2f}% — Return on shareholders' equity")
@@ -88,4 +124,8 @@ elif tabs == "🔍 Ticker Research":
                 st.write(f"**Revenue Growth YoY:** {info.get('revenueGrowth', 0)*100:.2f}%")
                 st.write(f"**EPS Growth YoY:** {info.get('earningsQuarterlyGrowth', 0)*100:.2f}%")
         except Exception as e:
-            st.error(f"Failed to load dat
+            st.error(f"Failed to load data: {e}")
+
+# --------- COMPARE TAB (Coming Next) ---------
+elif tabs == "📊 Compare Companies":
+    st.header("Compare Tickers — Coming Next")
