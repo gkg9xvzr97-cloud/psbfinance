@@ -19,17 +19,17 @@ st.set_page_config(page_title="PSP Finance", page_icon="💹", layout="wide")
 # ABOUT (your provided copy)
 # -------------------------
 ABOUT_MD = """
-## 📘 About the Project
+##  About the Project
 
 **PSP Finance** is a student-led initiative developed in a Business & Technology class. Our mission is to make financial education clear, accessible, and practical for everyone. The platform allows users to:
 
-- 🔍 Research public companies  
-- 📊 View and download financial statements (income, balance sheet, cash flow)  
-- 🧠 Explore simplified explanations of complex financial concepts  
+-  Research public companies  
+-  View and download financial statements (income, balance sheet, cash flow)  
+-  Explore simplified explanations of complex financial concepts  
 
 ---
 
-## 💡 Why It Matters
+##  Why It Matters
 
 As finance students, we often need multi-year financial data quickly — but searching across multiple websites is time-consuming and inefficient. **PSP Finance solves this by bringing everything into one intuitive dashboard**, complete with export buttons for instant downloads.
 
@@ -214,10 +214,10 @@ st.divider()
 # TABS
 # -------------------------
 TAB_HOME, TAB_KNOW, TAB_RESEARCH, TAB_AI = st.tabs([
-    "🏠 Home",
-    "📚 Knowledge Library",
-    "🔎 Research",
-    "📅 Historical Performance & 🧠 Insights",
+    "Home",
+    "Knowledge Library",
+    "Research",
+    "Historical Performance &  Insights",
 ])
 
 # HOME
@@ -345,7 +345,7 @@ with TAB_AI:
         worst = last.index[-1]
         ret = hist.pct_change().dropna()
         vol = ret.std().sort_values()
-        st.markdown("### 🧠 Insight Summary")
+        st.markdown("###  Insight Summary")
         st.write(f"Top performer: **{best}**. Lagging performer: **{worst}**.")
         st.write(f"Lower historical volatility among inputs: **{vol.index[0]}**; higher volatility: **{vol.index[-1]}**.")
         st.caption("Educational insights only — not investment advice.")
