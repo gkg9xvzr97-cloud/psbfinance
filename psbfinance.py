@@ -37,4 +37,41 @@ if tabs == "Home":
         """)
     with col2:
         st.image("capilotimage.png", caption="Explore charts, fundamentals, and markets", width=280)
+# --------- COMPARE TAB ---------
+elif tabs == "Compare Companies":
+    st.header("Compare Company Fundamentals & Price Performance")
+
+    raw = st.text_input("Enter tickers (comma-separated)", value="AAPL, MSFT, TSLA")
+    tickers = [t.strip().upper() for t in raw.split(",") if t.strip()]
+
+    if tickers:
+        st.markdown("### 📈 Normalized 5-Year Price Chart")
+        hist = yf.download(tickers, period="5y", auto_adjust=True)["Close"]
+        norm = hist / hist.iloc[0] * 100
+        st.line_chart(norm)
+
+        st.markdown("### 🧮 Fundamental Comparisons")
+        data = []
+        for t in tickers:
+            try:
+                info = yf.Ticker(t).info
+                data.append({
+                    "Ticker": t,
+                    "Name": info.get("shortName", t),
+                    "Market Cap (B)": round(info.get("marketCap", 0)/1e9, 2),
+                    "P/E Ratio": info.get("trailingPE", None),
+                    "ROE (%)": round(info.get("returnOnEquity", 0)*100, 2),
+                    "Revenue Growth (%)": round(info.get("revenueGrowth", 0)*100, 2)
+                })
+            except:
+                continue
+
+        df = pd.DataFrame(data)
+        st.dataframe(df)
+
+        if not df.empty:
+            st.markdown("#### ✅ Best Performer (Price Return)")
+            last = norm.iloc[-1]
+            best = last.idxmax()
+            st.success(f"Top price return: **{best}** with a {last[best]-100:.2f}% gain over 5 years.")
 
