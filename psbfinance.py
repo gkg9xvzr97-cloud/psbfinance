@@ -5,6 +5,8 @@ import plotly.graph_objs as go
 import streamlit as st
 import yfinance as yf
 from scipy.optimize import minimize
+
+
 # ---------------------- PAGE: Dashboard ----------------------
 if page == "Dashboard":
     st.markdown(
@@ -21,12 +23,6 @@ if page == "Dashboard":
 
     colA, colB, colC, colD = st.columns(4)
 
-
-# ---------------------- Page & Sidebar ----------------------
-st.set_page_config(page_title="Market Dashboard + Portfolio Optimizer", layout="wide")
-
-st.sidebar.title("Navigate")
-page = st.sidebar.radio("Go to", ["Dashboard", "Portfolio Optimizer", "About"])
 
 # ---------------------- Helpers & Cache ----------------------
 @st.cache_data(ttl=300)
