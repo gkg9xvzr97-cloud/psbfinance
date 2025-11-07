@@ -1,279 +1,463 @@
-# app.py (main Streamlit app)
+# PSPFinance — Bubble-style replica in Streamlit
+# ------------------------------------------------------------------
+# Features:
+# - Dashboard (hero + market overview cards)
+# - Portfolio (add holdings, CSV upload, KPIs, P/L, top holdings)
+# - Analysis (AI summaries + simple signal / decomposition charts)
+# - News (finance-only RSS with search + index/crypto filters)
+# - Alerts (price alerts on tickers, evaluated live)
+# - Community (simple forum in-session)
+# - About
+# ------------------------------------------------------------------
+
+import os
+import time
+import textwrap
+import numpy as np
+import pandas as pd
+import plotly.express as px
 import streamlit as st
 import yfinance as yf
-import pandas as pd
-import numpy as np
-import plotly.express as px
 import feedparser
+
+# Optional AI + PDF
+try:
+    import openai
+    HAVE_OPENAI = True
+except Exception:
+    HAVE_OPENAI = False
+
 from PyPDF2 import PdfReader
-import openai
-from sklearn.decomposition import PCA
 
-# Optional: stauth for login (not fully implemented here)
-# import streamlit_authenticator as stauth
+# ---------- Page / Theme ----------
+st.set_page_config(page_title="PSPFinance", layout="wide")
+DARK_CSS = """
+<style>
+/* Dark, card-forward look similar to your Bubble design */
+:root { --bg:#0e1824; --panel:#131f2c; --text:#e6eef6; --muted:#a8b3bf; --accent:#f3c13a; --green:#37c36b; }
+html, body, [class^="css"]  { background:var(--bg) !important; color:var(--text); }
+section.main > div { padding-top: 0rem !important; }
+h1,h2,h3,h4 { color: var(--text); letter-spacing: .2px; }
+small, .stCaption, .stMarkdown p { color: var(--muted) !important; }
+.block-container { padding-top: 1rem; }
+.card { background: var(--panel); border-radius: 14px; padding: 18px 18px; border: 1px solid #1b2a3a; }
+.kpi { font-size: 30px; font-weight: 700; }
+.kpi-sub { font-size: 13px; color: var(--muted); margin-top: -6px; }
+.badge { display:inline-block; padding:3px 10px; border-radius:10px; background:#1e2b3b; color:#dcdcdc; font-size:12px; margin-right:8px;}
+.badge--accent{ background: var(--accent); color:#121212; font-weight:700;}
+.change-up{ color: var(--green); font-weight:700;}
+.change-down{ color:#ff6b6b; font-weight:700;}
+.stButton>button { background: var(--accent); color:#141414; border:0; border-radius:10px; padding:8px 14px; font-weight:700;}
+.stTextInput>div>div>input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] > div { background:#0c1520; color:var(--text); border:1px solid #1b2a3a; }
+hr{ border-color:#1b2a3a;}
+</style>
+"""
+st.markdown(DARK_CSS, unsafe_allow_html=True)
 
-# Set page config
-st.set_page_config(page_title="PSP Finance Dashboard", layout="wide")
+# ---------- Sidebar Navigation ----------
+st.sidebar.title("PSPFinance")
+page = st.sidebar.radio(
+    "Navigate",
+    ["Dashboard", "Market Data", "Portfolio", "Analysis", "News", "Alerts", "Community", "About"],
+)
 
-# Sidebar navigation
-st.sidebar.title("Navigation")
-pages = [
-    "Landing Page", "Ticker Research", "Company Comparison", "Portfolio Analysis",
-    "Finance News", "FX & Derivatives", "AI Summary & PDF", "Knowledge Library",
-    "Decomposition Demo", "Login/Personalization"
-]
-selection = st.sidebar.radio("Go to", pages)
+# ---------- Helpers / Cache ----------
+@st.cache_data(ttl=300)
+def yf_history(tickers, period="1y", interval="1d"):
+    if isinstance(tickers, str):
+        tickers = [tickers]
+    df = yf.download(tickers, period=period, interval=interval, auto_adjust=True, progress=False)
+    if isinstance(df.columns, pd.MultiIndex):
+        df = df["Close"]
+    return df
 
-# Landing Page Content
-if selection == "Landing Page":
-    st.title("PSP Finance Dashboard")
-    st.image("https://via.placeholder.com/150", width=150)  # Placeholder image
-    st.markdown("""
-    Welcome to PSP Finance! This interactive dashboard provides tools for stock research, portfolio analysis, market news, FX charts, and more. 
-    Use the sidebar to navigate between modules. Each section offers data-driven insights powered by Python libraries (e.g. yfinance) and AI.
-    """)
+@st.cache_data(ttl=600)
+def yf_info(ticker):
+    return yf.Ticker(ticker).info
 
-    st.write("Use the sidebar on the left to navigate through the app modules.")
-# Ticker Research
-if selection == "Ticker Research":
-    st.header("Ticker Research")
-    ticker_symbol = st.text_input("Enter Stock Ticker (e.g. AAPL)", value="AAPL")
-    if ticker_symbol:
-        ticker_data = yf.Ticker(ticker_symbol)
-        # Fetch fundamental data with caching
-        @st.cache_data
-        def get_financials(sym):
-            t = yf.Ticker(sym)
-            return {
-                "info": t.info,
-                "income": t.financials.T,      # transpose for easier display
-                "balance": t.balance_sheet.T,
-                "cashflow": t.cashflow.T,
-                "history": t.history(period="5y")
-            }
-        data = get_financials(ticker_symbol)
-        
-        # Display key info
-        st.subheader("Key Metrics")
-        info = data["info"]
-        cols = st.columns(3)
-        with cols[0]:
-            st.write(f"**Name:** {info.get('shortName', 'N/A')}")
-            st.write(f"**Sector:** {info.get('sector', 'N/A')}")
-        with cols[1]:
-            st.write(f"**Market Cap:** ${info.get('marketCap', 0):,.0f}")
-            st.write(f"**P/E Ratio:** {info.get('trailingPE', 'N/A')}")
-        with cols[2]:
-            st.write(f"**Forward EPS:** {info.get('forwardEps', 'N/A')}")
-            st.write(f"**52-Week High/Low:** {info.get('fiftyTwoWeekHigh', 0):.2f} / {info.get('fiftyTwoWeekLow', 0):.2f}")
-        
-        # Display financial statements
-        st.subheader("Income Statement (Recent Years)")
-        st.dataframe(data["income"])
-        st.subheader("Balance Sheet (Recent Years)")
-        st.dataframe(data["balance"])
-        st.subheader("Cash Flow Statement (Recent Years)")
-        st.dataframe(data["cashflow"])
-        
-        # Price history chart
-        st.subheader("Historical Price (5 Years)")
-        price_df = data["history"]["Close"]
-        price_df.index = price_df.index.date
-        st.line_chart(price_df)
-# Company Comparison
-if selection == "Company Comparison":
-    st.header("Company Comparison")
-    col1, col2 = st.columns(2)
-    with col1:
-        sym1 = st.text_input("Ticker 1", value="AAPL")
-    with col2:
-        sym2 = st.text_input("Ticker 2", value="MSFT")
-    if sym1 and sym2:
-        tick1 = yf.Ticker(sym1)
-        tick2 = yf.Ticker(sym2)
-        info1 = tick1.info
-        info2 = tick2.info
-        # Compute ROE (netIncome/shareholderEquity) if available
-        def calc_roe(t):
-            ni = t.info.get('netIncomeToCommon', None)
-            eq = t.info.get('totalStockholderEquity', None)
-            if ni and eq:
-                return ni / eq
-            else:
-                return None
-        roe1 = calc_roe(tick1)
-        roe2 = calc_roe(tick2)
-        # EPS growth (trailing vs forward EPS)
-        eps1 = info1.get('trailingEps', 0)
-        fwd_eps1 = info1.get('forwardEps', 0)
-        growth1 = (fwd_eps1 - eps1) / eps1 * 100 if eps1 and fwd_eps1 else None
-        eps2 = info2.get('trailingEps', 0)
-        fwd_eps2 = info2.get('forwardEps', 0)
-        growth2 = (fwd_eps2 - eps2) / eps2 * 100 if eps2 and fwd_eps2 else None
-        
-        # Prepare comparison table
-        comp_df = pd.DataFrame({
-            "Metric": ["Market Cap (USD)", "P/E Ratio", "ROE", "EPS Growth (%)"],
-            sym1: [
-                f"${info1.get('marketCap',0):,.0f}", 
-                round(info1.get('trailingPE', 0), 2), 
-                f"{roe1:.2%}" if roe1 else "N/A", 
-                f"{growth1:.1f}%" if growth1 else "N/A"
-            ],
-            sym2: [
-                f"${info2.get('marketCap',0):,.0f}", 
-                round(info2.get('trailingPE', 0), 2), 
-                f"{roe2:.2%}" if roe2 else "N/A", 
-                f"{growth2:.1f}%" if growth2 else "N/A"
-            ]
-        })
-        st.dataframe(comp_df.set_index("Metric"))
-        
-        # Scoring (simple example: higher ROE and EPS growth = higher score)
-        score1 = (roe1 or 0) + (growth1 or 0)/100
-        score2 = (roe2 or 0) + (growth2 or 0)/100
-        st.write(f"Score for {sym1}: {score1:.2f}")
-        st.write(f"Score for {sym2}: {score2:.2f}")
-# Portfolio Analysis
-if selection == "Portfolio Analysis":
-    st.header("Portfolio Upload & Analysis")
-    uploaded = st.file_uploader("Upload Portfolio CSV", type="csv")
-    if uploaded:
-        port_df = pd.read_csv(uploaded)
-        if 'Ticker' in port_df.columns and 'Shares' in port_df.columns:
-            # Aggregate shares by ticker
-            holdings = port_df.groupby("Ticker")["Shares"].sum().reset_index()
-            st.write("Portfolio Holdings:", holdings)
-            # Fetch latest price for each ticker
-            prices = {}
-            total_value = 0.0
-            for ticker in holdings["Ticker"]:
-                price = yf.Ticker(ticker).history(period="1d")["Close"].iloc[-1]
-                prices[ticker] = price
-                shares = holdings.loc[holdings["Ticker"] == ticker, "Shares"].iloc[0]
-                total_value += price * shares
-            st.write(f"Total Portfolio Value: ${total_value:,.2f}")
-            # Example PnL: (assuming each row had a cost; else skip)
-            if 'Buy Price' in port_df.columns:
-                port_df['Value'] = port_df['Shares'] * port_df['Buy Price']
-                invested = port_df['Value'].sum()
-                pnl = total_value - invested
-                st.write(f"Total Invested: ${invested:,.2f}")
-                st.write(f"Unrealized P/L: ${pnl:,.2f}")
-            # Plot portfolio weights
-            fig = px.pie(holdings, names='Ticker', values='Shares', title="Portfolio Allocation")
-            st.plotly_chart(fig)
-        else:
-            st.error("CSV must have 'Ticker' and 'Shares' columns.")
-# Finance News via RSS
-if selection == "Finance News":
-    st.header("Latest Finance News")
-    feeds = {
-        "Bloomberg Technology": "https://www.bloomberg.com/feeds/site/technology.xml",
-        "WSJ Markets": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
-        "Reuters Business": "http://feeds.reuters.com/reuters/businessNews"
-    }
-    for name, url in feeds.items():
-        st.subheader(name)
-        feed = feedparser.parse(url)
-        entries = feed.get('entries', [])[:5]  # top 5 articles
-        for entry in entries:
-            st.markdown(f"- [{entry.get('title')}]({entry.get('link')})")
-# FX & Derivatives Dashboard
-if selection == "FX & Derivatives":
-    st.header("FX Rates")
-    fx_pairs = ["EURUSD=X", "GBPUSD=X", "JPY=X"]
-    for pair in fx_pairs:
-        rate = yf.Ticker(pair).history(period="1y")["Close"]
-        st.subheader(pair.replace("=X", ""))
-        st.line_chart(rate)
-    st.header("Derivatives Basics")
-    st.markdown("""
-    **Options (Calls and Puts)** – contracts giving the right (not obligation) to buy (call) or sell (put) an asset at a specified strike price.  
-    **Example:** A call option on a stock allows a trader to lock in a maximum buy price.  
-    **Futures Contracts** – agreements to buy/sell an asset at a future date and price.  
-    *(This section can be expanded with formulas or payoff diagrams as needed.)*
-    """)
-# AI Summary & PDF Upload
-if selection == "AI Summary & PDF":
-    st.header("AI Summary of PDF Document")
-    pdf_file = st.file_uploader("Upload PDF for Summarization", type="pdf")
-    api_key = st.text_input("OpenAI API Key", type="password")
-    if pdf_file and api_key:
-        pdf_reader = PdfReader(pdf_file)
-        text_data = ""
-        for page in pdf_reader.pages:
-            text_data += page.extract_text() + "\n"
-        st.write("Extracted text (truncated):", text_data[:500] + "...")
-        
-        openai.api_key = import openai
-import streamlit as st
+def pct_change_str(x):
+    try:
+        return f"{x:+.2f}%"
+    except Exception:
+        return "N/A"
 
-# Verify that the API key is accessible
-if "openai" in st.secrets and st.secrets["openai"].get("api_key"):
-    st.success("✅ OpenAI key loaded securely.")
-else:
-    st.error("❌ OpenAI key not found. Check your secrets.toml or Streamlit Cloud settings.")
+def last_price_change(ticker):
+    df = yf_history(ticker, period="5d")
+    if df.empty:
+        return None, None, None
+    s = df.iloc[-2:]
+    price = float(s.iloc[-1])
+    prev = float(s.iloc[0])
+    chg = (price/prev - 1.0)*100.0 if prev else None
+    return price, chg, len(df)
 
-# Knowledge Library
-if selection == "Knowledge Library":
-    st.header("Knowledge Library")
-    st.subheader("Major Financial Crises")
-    st.markdown("""
-    - **Black Monday (1987)**: A sudden global stock market crash on Oct 19, 1987. Major indices fell ~20-45%, triggering concerns of a depression:contentReference[oaicite:14]{index=14}.  
-    - **Asian Financial Crisis (1997)**: Began with the Thai baht collapse; spread to East Asia and beyond. It highlighted risks of fixed exchange regimes and over-leveraged economies.  
-    - **Global Financial Crisis (2007-2009)**: Triggered by subprime mortgages in the US, this became the worst crisis since the Great Depression:contentReference[oaicite:15]{index=15}. Banks globally experienced massive losses; economic activity contracted worldwide.  
-    - **Other Crises**: (e.g., 1929 Great Depression, 2000 Dot-com crash, 2020 COVID-19 market crash, etc.)
-    """)
+def kpi_card(title, price, change_pct, right_note=""):
+    change_class = "change-up" if (change_pct is not None and change_pct >= 0) else "change-down"
+    price_txt = f"${price:,.2f}" if price is not None else "N/A"
+    chg_txt = pct_change_str(change_pct) if change_pct is not None else "N/A"
+    st.markdown(
+        f"""
+        <div class="card">
+            <div class="badge">Stock Index</div>
+            <h3 style="margin:.2rem 0 .6rem 0;">{title}</h3>
+            <div class="kpi">{price_txt}</div>
+            <div class="{change_class}">{chg_txt}</div>
+            <div class="kpi-sub">{right_note}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    st.subheader("Basel Accords I, II, III")
-    st.markdown("""
-    - **Basel I (1988)**: Required internationally active banks to hold capital equal to at least 8% of risk-weighted assets:contentReference[oaicite:16]{index=16}. This standardized credit-risk capital across banks.  
-    - **Basel II (2004)**: Introduced more sophisticated risk measures (including operational risk) and internal ratings.  
-    - **Basel III (2010)**: Enacted post-2008 crisis; increased capital quality/quantity and added liquidity standards. It further refined the capital rules after lessons from the 2007-09 crisis:contentReference[oaicite:17]{index=17}.  
-    - These accords aim to enhance financial system resilience by ensuring banks can absorb losses.
-    """)
+def ensure_state():
+    # Simple in-session stores (replace with DB later)
+    for key, default in {
+        "holdings": [],                # list of dicts: {ticker, qty, buy_price}
+        "posts": [],                   # forum posts
+        "alerts": [],                  # alerts list: {ticker, operator, threshold}
+    }.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
 
-    st.subheader("Core Finance Formulas")
-    st.markdown(r"""
-    - **CAPM (Capital Asset Pricing Model)**: \( E(R_i) = R_f + \beta_i (E(R_m) - R_f) \):contentReference[oaicite:18]{index=18}. This gives the expected return of an asset based on its beta and the market risk premium.  
-    - **Return on Equity (ROE)**: \( \text{ROE} = \frac{\text{Net Income}}{\text{Shareholders' Equity}} \). It measures how efficiently equity is used to generate profit:contentReference[oaicite:19]{index=19}.  
-    - **Earnings Per Share (EPS) Growth**: The percentage increase in EPS year-over-year:contentReference[oaicite:20]{index=20}. It indicates how rapidly a company's "bottom line" per share is growing.  
-    - **Other Ratios**: P/E = Price / EPS; Debt-to-Equity, Current Ratio, etc. These provide snapshots of valuation, leverage, and liquidity.
-    """)
-# Decomposition and PCA Demo
-if selection == "Decomposition Demo":
-    st.header("Financial Data Decomposition (PCA Demo)")
-    st.write("This example generates synthetic financial ratios for 100 companies and performs PCA.")
-    # Generate synthetic data (e.g., 4 ratios: profit margin, debt/equity, ROE, current ratio)
-    np.random.seed(42)
-    ratios = np.random.rand(100, 4)  # random for demo purposes
-    pca = PCA(n_components=2)
-    components = pca.fit_transform(ratios)
-    df_comp = pd.DataFrame(components, columns=["PC1", "PC2"])
-    df_comp["Ticker"] = [f"T{str(i).zfill(3)}" for i in range(1, 101)]
-    fig = px.scatter(df_comp, x="PC1", y="PC2", hover_data=["Ticker"], title="PCA of Financial Ratios")
-    st.plotly_chart(fig)
-    st.write("Here, PC1 and PC2 are the principal components capturing the most variance in the synthetic ratio data.")
-# Login / Personalization (Optional)
-if selection == "Login/Personalization":
-    st.header("User Login / Personalization")
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-    if not st.session_state.logged_in:
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        if st.button("Login"):
-            # Dummy check (replace with real auth)
-            if username == "user" and password == "pass":
-                st.session_state.logged_in = True
-                st.session_state.user = username
-                st.success("Logged in successfully!")
-            else:
-                st.error("Invalid credentials")
+ensure_state()
+
+# ---------- Dashboard ----------
+if page == "Dashboard":
+    # Hero header
+    st.markdown(
+        """
+        <div class="card" style="padding:24px 24px; background:linear-gradient(180deg,#0f1d2c,#0e1824);">
+            <div class="badge badge--accent">AI-Driven</div>
+            <div class="badge">24/7 Monitoring</div>
+            <div class="badge">Real-Time</div>
+            <h1 style="margin-top:.6rem; font-size:42px;">Your Financial Intelligence Hub</h1>
+            <p style="max-width:900px; color:#c9d4df;">
+                Real-time market data, AI-powered insights, and personalized analysis to help you make informed decisions with confidence.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("### Market Overview")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        p, chg, _ = last_price_change("^GSPC")
+        kpi_card("S&P 500", p, chg, "SPX")
+    with c2:
+        p, chg, _ = last_price_change("^IXIC")
+        kpi_card("NASDAQ", p, chg, "IXIC")
+    with c3:
+        p, chg, _ = last_price_change("BTC-USD")
+        kpi_card("Bitcoin", p, chg, "BTCUSD")
+
+    st.markdown("### Portfolio Performance")
+    # Synthetic roll-up from current holdings
+    if st.session_state.holdings:
+        tickers = list({h["ticker"].upper() for h in st.session_state.holdings})
+        prices = yf_history(tickers, period="6mo")
+        latest = prices.iloc[-1]
+        # Compute value
+        total_value = 0.0
+        invested = 0.0
+        for h in st.session_state.holdings:
+            t = h["ticker"].upper()
+            qty = float(h["qty"])
+            bp = float(h.get("buy_price", 0))
+            if t in latest:
+                total_value += float(latest[t]) * qty
+            invested += bp * qty
+        gain = total_value - invested
+        ret_pct = (gain/invested*100) if invested else 0.0
+
+        k1, k2, k3, k4 = st.columns(4)
+        with k1: st.markdown(f'<div class="card"><div>Total Value</div><div class="kpi">${total_value:,.2f}</div></div>', unsafe_allow_html=True)
+        with k2: st.markdown(f'<div class="card"><div>Total Gain/Loss</div><div class="kpi {"change-up" if gain>=0 else "change-down"}'>{gain:,+.2f}</div></div>', unsafe_allow_html=True)
+        with k3: st.markdown(f'<div class="card"><div>Total Return</div><div class="kpi {"change-up" if ret_pct>=0 else "change-down"}'>{ret_pct:+.2f}%</div></div>', unsafe_allow_html=True)
+        with k4: st.markdown(f'<div class="card"><div>Holdings</div><div class="kpi">{len(tickers)}</div></div>', unsafe_allow_html=True)
+
+        st.markdown("#### Portfolio Value (last 6 months)")
+        st.line_chart(prices.fillna(method="ffill"))
     else:
-        st.write(f"Welcome back, **{st.session_state.user}**!")
-        # Personalized settings could go here
-        if st.button("Logout"):
-            st.session_state.logged_in = False
-            st.experimental_rerun()
+        st.info("No holdings yet. Go to the Portfolio page to add investments.")
+
+# ---------- Market Data ----------
+elif page == "Market Data":
+    st.header("Market Data")
+    default = "AAPL, MSFT, NVDA"
+    raw = st.text_input("Tickers (comma-separated)", value=default)
+    tickers = [t.strip().upper() for t in raw.split(",") if t.strip()]
+    period = st.selectbox("Period", ["6mo", "1y", "2y", "5y"], index=1)
+    if tickers:
+        hist = yf_history(tickers, period=period)
+        st.markdown("#### Normalized Performance")
+        norm = hist / hist.iloc[0] * 100.0
+        st.line_chart(norm)
+
+        st.markdown("#### Latest Snapshot")
+        info_rows = []
+        for t in tickers:
+            try:
+                ii = yf_info(t)
+                info_rows.append({
+                    "Ticker": t,
+                    "Name": ii.get("shortName", t),
+                    "Price": ii.get("currentPrice", None),
+                    "MarketCap(USD)": ii.get("marketCap", None),
+                    "PE": ii.get("trailingPE", None),
+                    "ROE": ii.get("returnOnEquity", None),
+                    "RevGrowth": ii.get("revenueGrowth", None),
+                })
+            except Exception:
+                pass
+        st.dataframe(pd.DataFrame(info_rows))
+
+# ---------- Portfolio ----------
+elif page == "Portfolio":
+    st.header("My Portfolio")
+    left, right = st.columns([1.2, 1])
+    with left:
+        st.subheader("Add Investment")
+        with st.form("add_hold"):
+            t = st.text_input("Ticker", value="AAPL")
+            qty = st.number_input("Quantity", value=10.0, step=1.0)
+            bp = st.number_input("Purchase Price (optional)", value=0.0, step=0.01)
+            submitted = st.form_submit_button("Add")
+        if submitted and t:
+            st.session_state.holdings.append({"ticker": t.upper(), "qty": qty, "buy_price": bp})
+            st.success(f"Added {qty} of {t.upper()}")
+    with right:
+        up = st.file_uploader("Upload CSV (Ticker,Qty,BuyPrice optional)", type="csv")
+        if up is not None:
+            dfu = pd.read_csv(up)
+            for _, r in dfu.iterrows():
+                st.session_state.holdings.append({"ticker": str(r["Ticker"]).upper(), "qty": float(r["Qty"]), "buy_price": float(r.get("BuyPrice", 0))})
+            st.success("Holdings imported.")
+
+    st.subheader("Your Holdings")
+    if not st.session_state.holdings:
+        st.info("No holdings yet.")
+    else:
+        hd = pd.DataFrame(st.session_state.holdings)
+        # enrich with live price + P/L
+        tickers = list({x["ticker"] for x in st.session_state.holdings})
+        prices = yf_history(tickers, period="5d").iloc[-1]
+        rows = []
+        total_val = 0.0
+        invested = 0.0
+        for h in st.session_state.holdings:
+            t = h["ticker"]
+            qty = float(h["qty"])
+            bp = float(h["buy_price"])
+            px = float(prices.get(t, np.nan))
+            val = qty * px if not np.isnan(px) else np.nan
+            rows.append({"Ticker": t, "Qty": qty, "Price": px, "Value": val, "BuyPrice": bp, "UnrealizedPnL": val - qty*bp if bp>0 and not np.isnan(val) else np.nan})
+            if not np.isnan(val):
+                total_val += val
+            invested += (bp*qty if bp>0 else 0)
+        out = pd.DataFrame(rows)
+        st.dataframe(out)
+        st.markdown("---")
+        st.markdown(f"**Total Value:** ${total_val:,.2f}")
+        if invested>0:
+            st.markdown(f"**Invested:** ${invested:,.2f}  |  **Unrealized P/L:** {total_val-invested:,+.2f}")
+
+        # Top holdings
+        st.markdown("#### Top Holdings by Value")
+        pie = out.dropna(subset=["Value"]).groupby("Ticker")["Value"].sum().reset_index()
+        if not pie.empty:
+            fig = px.pie(pie, names="Ticker", values="Value")
+            st.plotly_chart(fig, use_container_width=True)
+
+# ---------- Analysis (AI + signals + decomposition) ----------
+elif page == "Analysis":
+    st.header("AI Insights & Decomposition")
+    colA, colB = st.columns([1,1])
+
+    with colA:
+        st.subheader("AI Summary")
+        text_src = st.text_area("Paste text (e.g., market summary or report excerpt) or upload a PDF below", height=150)
+        up_pdf = st.file_uploader("Upload PDF (optional)", type="pdf", key="pdf_ai")
+        if up_pdf is not None and not text_src:
+            try:
+                reader = PdfReader(up_pdf)
+                text_src = "\n".join([p.extract_text() or "" for p in reader.pages])[:6000]
+                st.caption(f"Loaded {len(text_src)} characters from PDF.")
+            except Exception as e:
+                st.error(f"PDF error: {e}")
+
+        if HAVE_OPENAI:
+            try:
+                openai.api_key = st.secrets["openai"]["api_key"]
+            except Exception:
+                openai.api_key = None
+
+        if st.button("Generate Insight"):
+            if not text_src:
+                st.warning("Provide text or PDF content first.")
+            else:
+                with st.spinner("Generating insight..."):
+                    if HAVE_OPENAI and openai.api_key:
+                        try:
+                            resp = openai.ChatCompletion.create(
+                                model="gpt-4",
+                                messages=[{"role":"system","content":"You are a concise financial analyst."},
+                                          {"role":"user","content":f"Summarize and give 3 risks + 3 opportunities:\n{text_src[:5000]}"}],
+                                max_tokens=300, temperature=0.4)
+                            st.success("AI summary")
+                            st.write(resp.choices[0].message.content)
+                        except Exception as e:
+                            st.error(f"OpenAI error: {e}")
+                    else:
+                        st.info("OpenAI key not configured. Showing template summary.")
+                        st.write(textwrap.dedent("""
+                            - Trend: risk-on; breadth improving in large-cap tech.
+                            - Risks: policy path uncertainty, margin compression, funding stress.
+                            - Opportunities: quality compounders, cash generative firms, low leverage.
+                        """))
+
+    with colB:
+        st.subheader("Simple Decomposition")
+        t = st.text_input("Ticker for decomposition", value="AAPL")
+        hist = yf_history(t, period="2y").dropna()
+        if not hist.empty:
+            s = hist.squeeze()
+            trend = s.rolling(30, min_periods=5).mean()
+            resid = s - trend
+            chart = pd.DataFrame({"Price": s, "Trend(30d MA)": trend, "Residual": resid})
+            st.line_chart(chart[["Price","Trend(30d MA)"]])
+            st.markdown("Residual (Price - Trend)")
+            st.line_chart(chart[["Residual"]])
+
+        st.subheader("Signal Snapshot")
+        if not hist.empty:
+            last = float(s.iloc[-1]); ma50 = float(s.rolling(50).mean().iloc[-1]); ma200 = float(s.rolling(200).mean().iloc[-1])
+            st.write(f"Price: {last:.2f} | MA50: {ma50:.2f} | MA200: {ma200:.2f}")
+            signal = "Bullish (MA50>MA200)" if ma50>ma200 else "Cautious/Neutral"
+            st.write("Signal:", signal)
+
+# ---------- News ----------
+elif page == "News":
+    st.header("Financial News")
+    sources = {
+        "Reuters Business": "http://feeds.reuters.com/reuters/businessNews",
+        "WSJ Markets": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+        "Bloomberg ETF Report": "https://www.bloomberg.com/feed/podcast/etf-report.xml",
+    }
+    colf1, colf2, colf3 = st.columns([1,1,1])
+    with colf1:
+        src = st.selectbox("Source", list(sources.keys()))
+    with colf2:
+        index_filter = st.selectbox("Filter by Index", ["All", "S&P 500", "NASDAQ", "Dow Jones"])
+    with colf3:
+        crypto_filter = st.selectbox("Filter by Crypto", ["All", "Bitcoin", "Ethereum"])
+
+    q = st.text_input("Search keyword", value="")
+    parsed = feedparser.parse(sources[src])
+    if not parsed.entries:
+        st.info("No articles available.")
+    else:
+        count = 0
+        for e in parsed.entries:
+            title = e.get("title","")
+            summ = e.get("summary","")
+            link = e.get("link","#")
+            txt = (title + " " + summ).lower()
+            if q and q.lower() not in txt:
+                continue
+            # crude filters
+            if index_filter != "All" and index_filter.lower().split()[0] not in txt:
+                pass
+            if crypto_filter == "Bitcoin" and "bitcoin" not in txt:
+                continue
+            if crypto_filter == "Ethereum" and "ethereum" not in txt:
+                continue
+            st.markdown(f'**[{title}]({link})**')
+            st.caption(e.get("published",""))
+            st.write(summ[:400] + ("…" if len(summ)>400 else ""))
+            st.markdown("---")
+            count += 1
+        if count == 0:
+            st.info("No matches for your filters.")
+
+# ---------- Alerts ----------
+elif page == "Alerts":
+    st.header("Custom Alerts")
+    with st.form("new_alert"):
+        t = st.text_input("Ticker", value="AAPL")
+        op = st.selectbox("Condition", [">=", "<="], index=0)
+        thr = st.number_input("Price threshold", value=200.0, step=1.0)
+        ok = st.form_submit_button("Create Alert")
+    if ok and t:
+        st.session_state.alerts.append({"ticker": t.upper(), "operator": op, "threshold": float(thr)})
+        st.success("Alert created.")
+
+    st.subheader("Your Alerts")
+    if not st.session_state.alerts:
+        st.info("No alerts yet.")
+    else:
+        st.table(pd.DataFrame(st.session_state.alerts))
+
+        # Evaluate
+        st.subheader("Triggered (now)")
+        trig = []
+        for a in st.session_state.alerts:
+            px, _, _ = last_price_change(a["ticker"])
+            if px is None:
+                continue
+            if a["operator"] == ">=" and px >= a["threshold"]:
+                trig.append({**a, "price": px})
+            if a["operator"] == "<=" and px <= a["threshold"]:
+                trig.append({**a, "price": px})
+        if trig:
+            st.success("Some alerts are currently triggered:")
+            st.dataframe(pd.DataFrame(trig))
+        else:
+            st.write("No triggers at this moment.")
+
+# ---------- Community ----------
+elif page == "Community":
+    st.header("PSPFinance Community")
+    c1, c2 = st.columns([1.2, 1])
+    with c1:
+        with st.form("new_post"):
+            author = st.text_input("Your name or email", value="testuser@example.com")
+            title = st.text_input("Post title", value="")
+            category = st.selectbox("Category", ["Global Trends", "Technology", "Predictions", "Portfolio"])
+            body = st.text_area("Write your post", height=150)
+            post = st.form_submit_button("Create Post")
+        if post and title and body:
+            st.session_state.posts.insert(0, {
+                "author": author, "title": title, "category": category,
+                "body": body, "ts": pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+            })
+            st.success("Post published.")
+
+    with c2:
+        st.markdown("Filter")
+        cat = st.selectbox("Category", ["All", "Global Trends", "Technology", "Predictions", "Portfolio"])
+        key = st.text_input("Search keyword", value="")
+
+    st.markdown("---")
+    if not st.session_state.posts:
+        st.info("No posts yet.")
+    else:
+        for p in st.session_state.posts:
+            if cat != "All" and p["category"] != cat: 
+                continue
+            txt = (p["title"] + " " + p["body"]).lower()
+            if key and key.lower() not in txt:
+                continue
+            st.markdown(f"**{p['title']}**  —  {p['category']}")
+            st.caption(f"{p['author']} • {p['ts']}")
+            st.write(p["body"])
+            st.markdown("---")
+
+# ---------- About ----------
+elif page == "About":
+    st.header("About PSPFinance")
+    st.write(
+        "Built as a student project to replicate Bloomberg / Yahoo Finance style workflows: "
+        "research, portfolio analytics, AI insights, and finance-only news. "
+        "This Streamlit build mirrors the Bubble design you shared, with a clean dark theme, cards, KPIs, and modular pages."
+    )
+    st.write("Tech: Streamlit, yfinance, Plotly, feedparser, PyPDF2, OpenAI (optional).")
