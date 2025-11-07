@@ -16,6 +16,7 @@ PyPDF2
 openai
 scikit-learn
 pillow
+scipy
 
 
 
