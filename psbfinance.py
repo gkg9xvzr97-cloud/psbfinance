@@ -454,4 +454,35 @@ elif page == "Community":
             author = st.text_input("Your name or email", value="testuser@example.com")
             title = st.text_input("Post title", value="")
             category = st.selectbox("Category", ["Global Trends", "Technology", "Predictions", "Portfolio"])
-            body = st.text_area("Write your post", height=15_
+            body = st.text_area("Write your post", height=150)
+            post = st.form_submit_button("Create Post")
+        if post and title and body:
+            st.session_state.posts.insert(0, {
+                "author": author,
+                "title": title,
+                "category": category,
+                "body": body,
+                "ts": pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+            })
+            st.success("Post published.")
+
+    with c2:
+        st.markdown("Filter")
+        cat = st.selectbox("Category", ["All", "Global Trends", "Technology", "Predictions", "Portfolio"])
+        key = st.text_input("Search keyword", value="")
+
+    st.markdown("---")
+    if not st.session_state.posts:
+        st.info("No posts yet.")
+    else:
+        for p in st.session_state.posts:
+            if cat != "All" and p["category"] != cat:
+                continue
+            txt = (p["title"] + " " + p["body"]).lower()
+            if key and key.lower() not in txt:
+                continue
+            st.markdown(f"**{p['title']}**  —  {p['category']}")
+            st.caption(f"{p['author']} • {p['ts']}")
+            st.write(p["body"])
+            st.markdown("---")
+
