@@ -1,17 +1,17 @@
-# PSPFinance — Bubble-style replica in Streamlit
+# PSPFinance — Bubble-style replica in Streamlit (Corrected)
 # ------------------------------------------------------------------
 # Features:
 # - Dashboard (hero + market overview cards)
+# - Market Data (multi-ticker, snapshot table)
 # - Portfolio (add holdings, CSV upload, KPIs, P/L, top holdings)
-# - Analysis (AI summaries + simple signal / decomposition charts)
-# - News (finance-only RSS with search + index/crypto filters)
-# - Alerts (price alerts on tickers, evaluated live)
-# - Community (simple forum in-session)
+# - Analysis (AI summaries + simple decomposition & MA signals)
+# - News (finance-only RSS with search and filters)
+# - Alerts (price threshold alerts)
+# - Community (lightweight forum in session)
 # - About
 # ------------------------------------------------------------------
 
 import os
-import time
 import textwrap
 import numpy as np
 import pandas as pd
@@ -31,9 +31,9 @@ from PyPDF2 import PdfReader
 
 # ---------- Page / Theme ----------
 st.set_page_config(page_title="PSPFinance", layout="wide")
+
 DARK_CSS = """
 <style>
-/* Dark, card-forward look similar to your Bubble design */
 :root { --bg:#0e1824; --panel:#131f2c; --text:#e6eef6; --muted:#a8b3bf; --accent:#f3c13a; --green:#37c36b; }
 html, body, [class^="css"]  { background:var(--bg) !important; color:var(--text); }
 section.main > div { padding-top: 0rem !important; }
@@ -54,7 +54,7 @@ hr{ border-color:#1b2a3a;}
 """
 st.markdown(DARK_CSS, unsafe_allow_html=True)
 
-# ---------- Sidebar Navigation ----------
+# ---------- Sidebar ----------
 st.sidebar.title("PSPFinance")
 page = st.sidebar.radio(
     "Navigate",
@@ -109,11 +109,10 @@ def kpi_card(title, price, change_pct, right_note=""):
     )
 
 def ensure_state():
-    # Simple in-session stores (replace with DB later)
     for key, default in {
-        "holdings": [],                # list of dicts: {ticker, qty, buy_price}
-        "posts": [],                   # forum posts
-        "alerts": [],                  # alerts list: {ticker, operator, threshold}
+        "holdings": [],
+        "posts": [],
+        "alerts": [],
     }.items():
         if key not in st.session_state:
             st.session_state[key] = default
@@ -122,7 +121,7 @@ ensure_state()
 
 # ---------- Dashboard ----------
 if page == "Dashboard":
-    # Hero header
+    # Hero
     st.markdown(
         """
         <div class="card" style="padding:24px 24px; background:linear-gradient(180deg,#0f1d2c,#0e1824);">
@@ -151,12 +150,11 @@ if page == "Dashboard":
         kpi_card("Bitcoin", p, chg, "BTCUSD")
 
     st.markdown("### Portfolio Performance")
-    # Synthetic roll-up from current holdings
     if st.session_state.holdings:
         tickers = list({h["ticker"].upper() for h in st.session_state.holdings})
         prices = yf_history(tickers, period="6mo")
         latest = prices.iloc[-1]
-        # Compute value
+
         total_value = 0.0
         invested = 0.0
         for h in st.session_state.holdings:
@@ -167,13 +165,37 @@ if page == "Dashboard":
                 total_value += float(latest[t]) * qty
             invested += bp * qty
         gain = total_value - invested
-        ret_pct = (gain/invested*100) if invested else 0.0
+        ret_pct = (gain / invested * 100.0) if invested else 0.0
 
         k1, k2, k3, k4 = st.columns(4)
-        with k1: st.markdown(f'<div class="card"><div>Total Value</div><div class="kpi">${total_value:,.2f}</div></div>', unsafe_allow_html=True)
-        with k2: st.markdown(f'<div class="card"><div>Total Gain/Loss</div><div class="kpi {"change-up" if gain>=0 else "change-down"}'>{gain:,+.2f}</div></div>', unsafe_allow_html=True)
-        with k3: st.markdown(f'<div class="card"><div>Total Return</div><div class="kpi {"change-up" if ret_pct>=0 else "change-down"}'>{ret_pct:+.2f}%</div></div>', unsafe_allow_html=True)
-        with k4: st.markdown(f'<div class="card"><div>Holdings</div><div class="kpi">{len(tickers)}</div></div>', unsafe_allow_html=True)
+        # k1
+        with k1:
+            st.markdown(
+                f'<div class="card"><div>Total Value</div><div class="kpi">${total_value:,.2f}</div></div>',
+                unsafe_allow_html=True
+            )
+        # k2 (fixed interpolation)
+        with k2:
+            color_class = "change-up" if gain >= 0 else "change-down"
+            st.markdown(
+                f'<div class="card"><div>Total Gain/Loss</div>'
+                f'<div class="kpi {color_class}">{gain:,+.2f}</div></div>',
+                unsafe_allow_html=True
+            )
+        # k3 (fixed interpolation)
+        with k3:
+            color_class_ret = "change-up" if ret_pct >= 0 else "change-down"
+            st.markdown(
+                f'<div class="card"><div>Total Return</div>'
+                f'<div class="kpi {color_class_ret}">{ret_pct:+.2f}%</div></div>',
+                unsafe_allow_html=True
+            )
+        # k4
+        with k4:
+            st.markdown(
+                f'<div class="card"><div>Holdings</div><div class="kpi">{len(tickers)}</div></div>',
+                unsafe_allow_html=True
+            )
 
         st.markdown("#### Portfolio Value (last 6 months)")
         st.line_chart(prices.fillna(method="ffill"))
@@ -230,7 +252,11 @@ elif page == "Portfolio":
         if up is not None:
             dfu = pd.read_csv(up)
             for _, r in dfu.iterrows():
-                st.session_state.holdings.append({"ticker": str(r["Ticker"]).upper(), "qty": float(r["Qty"]), "buy_price": float(r.get("BuyPrice", 0))})
+                st.session_state.holdings.append({
+                    "ticker": str(r["Ticker"]).upper(),
+                    "qty": float(r["Qty"]),
+                    "buy_price": float(r.get("BuyPrice", 0))
+                })
             st.success("Holdings imported.")
 
     st.subheader("Your Holdings")
@@ -238,7 +264,6 @@ elif page == "Portfolio":
         st.info("No holdings yet.")
     else:
         hd = pd.DataFrame(st.session_state.holdings)
-        # enrich with live price + P/L
         tickers = list({x["ticker"] for x in st.session_state.holdings})
         prices = yf_history(tickers, period="5d").iloc[-1]
         rows = []
@@ -250,7 +275,11 @@ elif page == "Portfolio":
             bp = float(h["buy_price"])
             px = float(prices.get(t, np.nan))
             val = qty * px if not np.isnan(px) else np.nan
-            rows.append({"Ticker": t, "Qty": qty, "Price": px, "Value": val, "BuyPrice": bp, "UnrealizedPnL": val - qty*bp if bp>0 and not np.isnan(val) else np.nan})
+            rows.append({
+                "Ticker": t, "Qty": qty, "Price": px, "Value": val,
+                "BuyPrice": bp,
+                "UnrealizedPnL": (val - qty*bp) if (bp > 0 and not np.isnan(val)) else np.nan
+            })
             if not np.isnan(val):
                 total_val += val
             invested += (bp*qty if bp>0 else 0)
@@ -258,17 +287,16 @@ elif page == "Portfolio":
         st.dataframe(out)
         st.markdown("---")
         st.markdown(f"**Total Value:** ${total_val:,.2f}")
-        if invested>0:
-            st.markdown(f"**Invested:** ${invested:,.2f}  |  **Unrealized P/L:** {total_val-invested:,+.2f}")
+        if invested > 0:
+            st.markdown(f"**Invested:** ${invested:,.2f}  |  **Unrealized P/L:** {total_val - invested:,+.2f}")
 
-        # Top holdings
         st.markdown("#### Top Holdings by Value")
         pie = out.dropna(subset=["Value"]).groupby("Ticker")["Value"].sum().reset_index()
         if not pie.empty:
             fig = px.pie(pie, names="Ticker", values="Value")
             st.plotly_chart(fig, use_container_width=True)
 
-# ---------- Analysis (AI + signals + decomposition) ----------
+# ---------- Analysis (AI + decomposition) ----------
 elif page == "Analysis":
     st.header("AI Insights & Decomposition")
     colA, colB = st.columns([1,1])
@@ -300,9 +328,12 @@ elif page == "Analysis":
                         try:
                             resp = openai.ChatCompletion.create(
                                 model="gpt-4",
-                                messages=[{"role":"system","content":"You are a concise financial analyst."},
-                                          {"role":"user","content":f"Summarize and give 3 risks + 3 opportunities:\n{text_src[:5000]}"}],
-                                max_tokens=300, temperature=0.4)
+                                messages=[
+                                    {"role":"system","content":"You are a concise financial analyst."},
+                                    {"role":"user","content":f"Summarize and give 3 risks + 3 opportunities:\n{text_src[:5000]}"},
+                                ],
+                                max_tokens=300, temperature=0.4
+                            )
                             st.success("AI summary")
                             st.write(resp.choices[0].message.content)
                         except Exception as e:
@@ -330,9 +361,11 @@ elif page == "Analysis":
 
         st.subheader("Signal Snapshot")
         if not hist.empty:
-            last = float(s.iloc[-1]); ma50 = float(s.rolling(50).mean().iloc[-1]); ma200 = float(s.rolling(200).mean().iloc[-1])
+            last = float(s.iloc[-1])
+            ma50 = float(s.rolling(50).mean().iloc[-1])
+            ma200 = float(s.rolling(200).mean().iloc[-1])
             st.write(f"Price: {last:.2f} | MA50: {ma50:.2f} | MA200: {ma200:.2f}")
-            signal = "Bullish (MA50>MA200)" if ma50>ma200 else "Cautious/Neutral"
+            signal = "Bullish (MA50>MA200)" if ma50 > ma200 else "Cautious/Neutral"
             st.write("Signal:", signal)
 
 # ---------- News ----------
@@ -364,7 +397,6 @@ elif page == "News":
             txt = (title + " " + summ).lower()
             if q and q.lower() not in txt:
                 continue
-            # crude filters
             if index_filter != "All" and index_filter.lower().split()[0] not in txt:
                 pass
             if crypto_filter == "Bitcoin" and "bitcoin" not in txt:
@@ -397,7 +429,6 @@ elif page == "Alerts":
     else:
         st.table(pd.DataFrame(st.session_state.alerts))
 
-        # Evaluate
         st.subheader("Triggered (now)")
         trig = []
         for a in st.session_state.alerts:
@@ -423,41 +454,4 @@ elif page == "Community":
             author = st.text_input("Your name or email", value="testuser@example.com")
             title = st.text_input("Post title", value="")
             category = st.selectbox("Category", ["Global Trends", "Technology", "Predictions", "Portfolio"])
-            body = st.text_area("Write your post", height=150)
-            post = st.form_submit_button("Create Post")
-        if post and title and body:
-            st.session_state.posts.insert(0, {
-                "author": author, "title": title, "category": category,
-                "body": body, "ts": pd.Timestamp.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-            })
-            st.success("Post published.")
-
-    with c2:
-        st.markdown("Filter")
-        cat = st.selectbox("Category", ["All", "Global Trends", "Technology", "Predictions", "Portfolio"])
-        key = st.text_input("Search keyword", value="")
-
-    st.markdown("---")
-    if not st.session_state.posts:
-        st.info("No posts yet.")
-    else:
-        for p in st.session_state.posts:
-            if cat != "All" and p["category"] != cat: 
-                continue
-            txt = (p["title"] + " " + p["body"]).lower()
-            if key and key.lower() not in txt:
-                continue
-            st.markdown(f"**{p['title']}**  —  {p['category']}")
-            st.caption(f"{p['author']} • {p['ts']}")
-            st.write(p["body"])
-            st.markdown("---")
-
-# ---------- About ----------
-elif page == "About":
-    st.header("About PSPFinance")
-    st.write(
-        "Built as a student project to replicate Bloomberg / Yahoo Finance style workflows: "
-        "research, portfolio analytics, AI insights, and finance-only news. "
-        "This Streamlit build mirrors the Bubble design you shared, with a clean dark theme, cards, KPIs, and modular pages."
-    )
-    st.write("Tech: Streamlit, yfinance, Plotly, feedparser, PyPDF2, OpenAI (optional).")
+            body = st.text_area("Write your post", height=15_
