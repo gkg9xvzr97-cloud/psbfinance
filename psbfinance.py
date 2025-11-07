@@ -5,6 +5,22 @@ import plotly.graph_objs as go
 import streamlit as st
 import yfinance as yf
 from scipy.optimize import minimize
+# ---------------------- PAGE: Dashboard ----------------------
+if page == "Dashboard":
+    st.markdown(
+        """
+        <h1 style='text-align:center; color:#004AAD;'>🌍 PSP Finance — Global Market Intelligence</h1>
+        <p style='text-align:center; font-size:17px; color:gray;'>
+            Explore real-time market data, global indices, and financial trends. 
+            Use this platform to analyze and compare companies just like on Bloomberg or Yahoo Finance.
+        </p>
+        """, unsafe_allow_html=True)
+
+    st.markdown("### 📊 **Live Market Overview**")
+    st.caption("Track the latest market movements across indices, crypto, and key sectors.")
+
+    colA, colB, colC, colD = st.columns(4)
+
 
 # ---------------------- Page & Sidebar ----------------------
 st.set_page_config(page_title="Market Dashboard + Portfolio Optimizer", layout="wide")
