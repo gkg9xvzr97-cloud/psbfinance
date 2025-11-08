@@ -1,20 +1,3 @@
-# app.py — PSP Finance: Global Market Dashboard + Portfolio Optimizer
-# -------------------------------------------------------------------
-# How to run locally:
-#   1) Create requirements.txt with:
-#        streamlit
-#        yfinance
-#        pandas
-#        numpy
-#        plotly
-#        scipy
-#   2) pip install -r requirements.txt
-#   3) streamlit run app.py
-#
-# Notes:
-# - Data source: Yahoo Finance via yfinance (free)
-# - Optimizer: Mean–Variance (SLSQP), Min-Variance & Max-Sharpe + Efficient Frontier
-# - UI: Guided, clean, professor-friendly
 
 import numpy as np
 import pandas as pd
@@ -154,6 +137,47 @@ def kpi_card(title: str, value: str, note: str = ""):
       <div class="kpi-note">{note}</div>
     </div>
     """, unsafe_allow_html=True)
+def rolling_vol(series, window=60):
+    rets = series.pct_change().dropna()
+    return (rets.rolling(window).std() * np.sqrt(252)).dropna()
+
+def rolling_beta(asset, benchmark, window=60):
+    # simple rolling beta via covariance/variance
+    ar = asset.pct_change().dropna()
+    br = benchmark.pct_change().dropna()
+    idx = ar.index.intersection(br.index)
+    ar = ar.loc[idx]; br = br.loc[idx]
+    cov = ar.rolling(window).cov(br)
+    var = br.rolling(window).var()
+    beta = cov / var
+    return beta.dropna()
+
+def max_drawdown(series):
+    cummax = series.cummax()
+    dd = (series / cummax) - 1.0
+    return float(dd.min())
+st.markdown("### Rolling Risk (Volatility & Beta vs SPY)")
+t_sel = st.selectbox("Pick one of your tickers for risk view", [t.strip() for t in raw.split(",") if t.strip()], index=0)
+bench = "SPY"
+
+prices_risk = load_prices([t_sel, bench], period=period)
+if not prices_risk.empty and prices_risk.shape[1] == 2:
+    a = prices_risk.iloc[:, 0].dropna()
+    b = prices_risk.iloc[:, 1].dropna()
+
+    vol60 = rolling_vol(a, window=60)
+    beta60 = rolling_beta(a, b, window=60)
+    dd = max_drawdown(a)
+
+    c1, c2, c3 = st.columns(3)
+    with c1: kpi_card("Max Drawdown", f"{dd:.2%}", "Peak-to-trough over selected period")
+    with c2: kpi_card("Current 60d Vol", f"{vol60.iloc[-1]:.2%}", "Annualized")
+    with c3: kpi_card("Current 60d Beta vs SPY", f"{beta60.iloc[-1]:.2f}", "")
+
+    st.line_chart(pd.DataFrame({"60d Vol": vol60}))
+    st.line_chart(pd.DataFrame({"60d Beta vs SPY": beta60}))
+else:
+    st.info("Load at least one stock plus SPY to compute rolling beta.")
 
 # ---------------------- PAGE: Dashboard ----------------------
 if page == "Dashboard":
@@ -177,14 +201,28 @@ if page == "Dashboard":
         block = [c1, c2, c3, c4][i]
         with block:
             kpi_card(name, f"{latest:,.2f}", f"1-day change: {chg:+.2f}%")
+# Quick presets (speeds up demo)
+preset_cols = st.columns(5)
+presets = {
+    "US Tech": "AAPL, MSFT, NVDA, AMZN, GOOGL",
+    "US Banks": "JPM, BAC, WFC, C",
+    "Energy": "XOM, CVX, SLB, BP",
+    "Europe Mix": "NESN.SW, ASML.AS, SAP.DE, SIE.DE",
+    "Crypto": "BTC-USD, ETH-USD"
+}
+for i, (label, tick) in enumerate(presets.items()):
+    if preset_cols[i].button(label):
+        st.session_state["dash_tickers_override"] = tick
+
+default_value = st.session_state.get("dash_tickers_override", "AAPL, MSFT, NVDA, AMZN")
 
     st.markdown("### Multi-Ticker Normalized Performance")
     raw = st.text_input(
-        "Search or compare (examples: AAPL, MSFT, NVDA, AMZN, XOM, JPM, GOOGL, META)",
-        value="AAPL, MSFT, NVDA, AMZN",
-        help="Type symbols separated by commas."
-    )
-    period = st.selectbox("Period", ["6mo", "1y", "2y", "3y", "5y"], index=2, key="dash_period")
+    "Search or compare (examples: AAPL, MSFT, NVDA, AMZN, XOM, JPM, GOOGL, META)",
+    value=default_value,
+    key="dash_tickers"
+)
+  period = st.selectbox("Period", ["6mo", "1y", "2y", "3y", "5y"], index=2, key="dash_period")
     if raw:
         pxs = load_prices(raw, period=period)
         if not pxs.empty:
