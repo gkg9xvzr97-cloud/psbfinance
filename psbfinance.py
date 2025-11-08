@@ -1,3 +1,8 @@
+# PSP Finance — Global Market Dashboard + Portfolio Optimizer + News
+# -------------------------------------------------------------------
+# How to run:
+#   pip install streamlit yfinance pandas numpy plotly scipy feedparser
+#   streamlit run app.py
 
 import numpy as np
 import pandas as pd
@@ -5,16 +10,17 @@ import plotly.express as px
 import plotly.graph_objs as go
 import streamlit as st
 import yfinance as yf
+import feedparser
 from scipy.optimize import minimize
 
 # ---------------------- Page Config & Styling ----------------------
 st.set_page_config(page_title="PSP Finance — Dashboard & Optimizer", layout="wide")
 
-# Subtle professional CSS (no emojis; finance-first look)
+# --- Custom CSS ---
 st.markdown("""
 <style>
 :root{
-  --ink:#0e1a2b; --muted:#6b7b91; --card:#f6f8fb; --accent:#0d6efd; --accent-2:#204080;
+  --ink:#0e1a2b; --muted:#6b7b91; --card:#f6f8fb; --accent:#0d6efd;
 }
 html, body, .block-container { color: var(--ink); }
 h1,h2,h3 { letter-spacing: 0.2px; }
@@ -29,7 +35,7 @@ h1,h2,h3 { letter-spacing: 0.2px; }
   padding: 10px 18px; font-weight: 600;
 }
 .card {
-  background: var(--card); border: 1px solid #e6ebf2; border-radius: 14px; padding: 16px 18px; height: 100%;
+  background: var(--card); border: 1px solid #e6ebf2; border-radius: 14px; padding: 16px 18px;
 }
 .kpi { font-size: 28px; font-weight: 800; margin-top: 6px; }
 .kpi-note { color: var(--muted); font-size: 12px; margin-top: -4px; }
@@ -39,31 +45,28 @@ h1,h2,h3 { letter-spacing: 0.2px; }
   border-radius: 18px; padding: 22px 24px; margin-bottom: 8px;
 }
 .smallnote { color: var(--muted); font-size: 13px; }
-hr { border-color: #e8eef6; }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------------------- Sidebar Navigation ----------------------
 st.sidebar.title("PSP Finance")
-page = st.sidebar.radio("Navigate", ["Dashboard", "Portfolio Optimizer", "About"])
+page = st.sidebar.radio("Navigate", ["Dashboard", "Portfolio Optimizer", "News", "About"])
 
-with st.sidebar.expander("How to use", expanded=True):
-    st.markdown("""
-**Dashboard**
-1) Type tickers in the search bar (e.g., `AAPL, MSFT, NVDA`).
-2) Review normalized performance, index KPIs, and sector returns.
+# Watchlist (persistent)
+if "watchlist" not in st.session_state:
+    st.session_state.watchlist = ["AAPL", "MSFT", "NVDA"]
 
-**Portfolio Optimizer**
-1) Enter tickers and choose history period.
-2) Set bounds and risk-free rate.
-3) Click **Run Optimization** to see the efficient frontier, Min-Variance, and Max-Sharpe portfolios.
-4) Optional: upload your current weights (CSV columns: `Ticker,Weight`) to compare.
-    """)
+st.sidebar.subheader("My Watchlist")
+add_t = st.sidebar.text_input("Add ticker", value="")
+if st.sidebar.button("Add") and add_t.strip():
+    sym = add_t.strip().upper()
+    if sym not in st.session_state.watchlist:
+        st.session_state.watchlist.append(sym)
+if st.sidebar.button("Clear Watchlist"):
+    st.session_state.watchlist = []
 
-# ---------------------- Helpers & Cache ----------------------
 @st.cache_data(ttl=300)
 def load_prices(tickers, period="3y", interval="1d"):
-    """Download adjusted close prices for tickers."""
     if isinstance(tickers, str):
         tickers = [t.strip().upper() for t in tickers.split(",") if t.strip()]
     if not tickers:
@@ -73,17 +76,28 @@ def load_prices(tickers, period="3y", interval="1d"):
         df = df["Close"]
     return df.dropna(how="all")
 
-def to_returns(prices: pd.DataFrame, method="log"):
-    prices = prices.dropna()
+if st.session_state.watchlist:
+    wl_px = load_prices(st.session_state.watchlist, period="5d")
+    if not wl_px.empty:
+        last = wl_px.iloc[-1]
+        prev = wl_px.iloc[-2] if len(wl_px) > 1 else last
+        table = pd.DataFrame({
+            "Price": last,
+            "1d %": ((last/prev - 1.0) * 100.0).round(2)
+        })
+        st.sidebar.dataframe(table)
+
+# ---------------------- Utility Functions ----------------------
+def to_returns(prices, method="log"):
     if method == "log":
         rets = np.log(prices / prices.shift(1))
     else:
         rets = prices.pct_change()
     return rets.dropna()
 
-def annualize_stats(returns: pd.DataFrame, periods_per_year=252):
-    mu = returns.mean() * periods_per_year         # annualized expected returns
-    cov = returns.cov() * periods_per_year         # annualized covariance
+def annualize_stats(returns, periods_per_year=252):
+    mu = returns.mean() * periods_per_year
+    cov = returns.cov() * periods_per_year
     return mu, cov
 
 def portfolio_perf(weights, mu, cov, rf=0.0):
@@ -93,11 +107,11 @@ def portfolio_perf(weights, mu, cov, rf=0.0):
     sharpe = (ret - rf) / vol if vol > 0 else np.nan
     return ret, vol, sharpe
 
-def solve_min_variance(mu, cov, bounds, rf=0.0, w_sum=1.0):
+def solve_min_variance(mu, cov, bounds, w_sum=1.0):
     n = len(mu)
     x0 = np.repeat(1.0/n, n)
     cons = [{'type': 'eq', 'fun': lambda w: np.sum(w) - w_sum}]
-    obj = lambda w: np.dot(w, cov @ w)  # variance
+    obj = lambda w: np.dot(w, cov @ w)
     res = minimize(obj, x0, method="SLSQP", bounds=bounds, constraints=cons)
     return res.x
 
@@ -111,295 +125,175 @@ def solve_max_sharpe(mu, cov, bounds, rf=0.0, w_sum=1.0):
     res = minimize(neg_sharpe, x0, method="SLSQP", bounds=bounds, constraints=cons)
     return res.x
 
-def efficient_frontier(mu, cov, bounds, points=31, w_sum=1.0):
-    """Target-return frontier via variance minimization."""
-    mu_values = np.array(mu)
-    tgt = np.linspace(mu_values.min(), mu_values.max(), points)
+def efficient_frontier(mu, cov, bounds, points=30):
+    mu_vals = np.array(mu)
+    tgt = np.linspace(mu_vals.min(), mu_vals.max(), points)
     rets, vols = [], []
-    n = len(mu_values)
+    n = len(mu_vals)
     x0 = np.repeat(1.0/n, n)
     for tr in tgt:
         cons = [
-            {'type': 'eq', 'fun': lambda w, tr=tr: np.dot(w, mu_values) - tr},
-            {'type': 'eq', 'fun': lambda w: np.sum(w) - w_sum},
+            {'type': 'eq', 'fun': lambda w, tr=tr: np.dot(w, mu_vals) - tr},
+            {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
         ]
         res = minimize(lambda w: np.dot(w, cov @ w), x0, method="SLSQP", bounds=bounds, constraints=cons)
         if res.success:
-            r, v, _ = portfolio_perf(res.x, mu_values, cov, rf=0.0)
+            r, v, _ = portfolio_perf(res.x, mu_vals, cov)
             rets.append(r); vols.append(v)
     return np.array(rets), np.array(vols)
 
-def kpi_card(title: str, value: str, note: str = ""):
+def kpi_card(title, value, note=""):
     st.markdown(f"""
     <div class="card">
-      <div><span class="pipe"></span><strong>{title}</strong></div>
-      <div class="kpi">{value}</div>
-      <div class="kpi-note">{note}</div>
+        <div><span class="pipe"></span><strong>{title}</strong></div>
+        <div class="kpi">{value}</div>
+        <div class="kpi-note">{note}</div>
     </div>
     """, unsafe_allow_html=True)
+
+# Rolling stats
 def rolling_vol(series, window=60):
     rets = series.pct_change().dropna()
     return (rets.rolling(window).std() * np.sqrt(252)).dropna()
 
 def rolling_beta(asset, benchmark, window=60):
-    # simple rolling beta via covariance/variance
     ar = asset.pct_change().dropna()
     br = benchmark.pct_change().dropna()
     idx = ar.index.intersection(br.index)
-    ar = ar.loc[idx]; br = br.loc[idx]
+    ar, br = ar.loc[idx], br.loc[idx]
     cov = ar.rolling(window).cov(br)
     var = br.rolling(window).var()
-    beta = cov / var
-    return beta.dropna()
+    return (cov / var).dropna()
 
 def max_drawdown(series):
     cummax = series.cummax()
     dd = (series / cummax) - 1.0
     return float(dd.min())
-st.markdown("### Rolling Risk (Volatility & Beta vs SPY)")
-t_sel = st.selectbox("Pick one of your tickers for risk view", [t.strip() for t in raw.split(",") if t.strip()], index=0)
-bench = "SPY"
 
-prices_risk = load_prices([t_sel, bench], period=period)
-if not prices_risk.empty and prices_risk.shape[1] == 2:
-    a = prices_risk.iloc[:, 0].dropna()
-    b = prices_risk.iloc[:, 1].dropna()
-
-    vol60 = rolling_vol(a, window=60)
-    beta60 = rolling_beta(a, b, window=60)
-    dd = max_drawdown(a)
-
-    c1, c2, c3 = st.columns(3)
-    with c1: kpi_card("Max Drawdown", f"{dd:.2%}", "Peak-to-trough over selected period")
-    with c2: kpi_card("Current 60d Vol", f"{vol60.iloc[-1]:.2%}", "Annualized")
-    with c3: kpi_card("Current 60d Beta vs SPY", f"{beta60.iloc[-1]:.2f}", "")
-
-    st.line_chart(pd.DataFrame({"60d Vol": vol60}))
-    st.line_chart(pd.DataFrame({"60d Beta vs SPY": beta60}))
-else:
-    st.info("Load at least one stock plus SPY to compute rolling beta.")
-
-# ---------------------- PAGE: Dashboard ----------------------
+# ---------------------- DASHBOARD ----------------------
 if page == "Dashboard":
     st.markdown("""
     <div class="header-hero">
-      <h2 style="margin:0;">Global Market Intelligence</h2>
-      <div class="smallnote">A professional overview of indices, equities, sectors, and trends — built for academic and investment analysis.</div>
+      <h2>Global Market Intelligence</h2>
+      <div class="smallnote">A research-grade dashboard inspired by Bloomberg and Yahoo Finance.</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # KPI row: S&P 500, NASDAQ, Dow, Bitcoin
-    idx_map = {"S&P 500": "^GSPC", "NASDAQ": "^IXIC", "Dow Jones": "^DJI", "Bitcoin": "BTC-USD"}
-    c1, c2, c3, c4 = st.columns(4)
-    for i, (name, sym) in enumerate(idx_map.items()):
-        prices = load_prices(sym, period="5d")
-        if prices.empty:
-            continue
-        latest = float(prices.iloc[-1, 0])
-        prev = float(prices.iloc[-2, 0]) if len(prices) > 1 else np.nan
-        chg = ((latest/prev)-1)*100 if prev and not np.isnan(prev) else np.nan
-        block = [c1, c2, c3, c4][i]
-        with block:
-            kpi_card(name, f"{latest:,.2f}", f"1-day change: {chg:+.2f}%")
-# Quick presets (speeds up demo)
-preset_cols = st.columns(5)
-presets = {
-    "US Tech": "AAPL, MSFT, NVDA, AMZN, GOOGL",
-    "US Banks": "JPM, BAC, WFC, C",
-    "Energy": "XOM, CVX, SLB, BP",
-    "Europe Mix": "NESN.SW, ASML.AS, SAP.DE, SIE.DE",
-    "Crypto": "BTC-USD, ETH-USD"
-}
-for i, (label, tick) in enumerate(presets.items()):
-    if preset_cols[i].button(label):
-        st.session_state["dash_tickers_override"] = tick
-
-default_value = st.session_state.get("dash_tickers_override", "AAPL, MSFT, NVDA, AMZN")
-
-    st.markdown("### Multi-Ticker Normalized Performance")
-    raw = st.text_input(
-    "Search or compare (examples: AAPL, MSFT, NVDA, AMZN, XOM, JPM, GOOGL, META)",
-    value=default_value,
-    key="dash_tickers"
-)
-  period = st.selectbox("Period", ["6mo", "1y", "2y", "3y", "5y"], index=2, key="dash_period")
-    if raw:
-        pxs = load_prices(raw, period=period)
-        if not pxs.empty:
-            norm = pxs / pxs.iloc[0] * 100.0
-            st.line_chart(norm)
-        else:
-            st.info("No price data returned for the chosen inputs.")
-
-    st.markdown("### Sector Snapshot (SPDR ETFs)")
-    sector_map = {
-        "SPY (Market)": "SPY", "XLK (Tech)": "XLK", "XLF (Financials)": "XLF",
-        "XLE (Energy)": "XLE", "XLY (Cons. Discr.)": "XLY", "XLV (Health)": "XLV",
-        "XLP (Cons. Staples)": "XLP", "XLI (Industrials)": "XLI", "XLU (Utilities)": "XLU"
+    # Preset ticker groups
+    st.caption("💡 Try presets or enter your own tickers.")
+    cols = st.columns(5)
+    presets = {
+        "US Tech": "AAPL, MSFT, NVDA, AMZN, GOOGL",
+        "US Banks": "JPM, BAC, WFC, C",
+        "Energy": "XOM, CVX, SLB, BP",
+        "Europe": "NESN.SW, ASML.AS, SAP.DE, SIE.DE",
+        "Crypto": "BTC-USD, ETH-USD"
     }
-    sec_df = load_prices(list(sector_map.values()), period="6mo")
+    for i, (label, tick) in enumerate(presets.items()):
+        if cols[i].button(label):
+            st.session_state["dash_tickers"] = tick
+    raw = st.text_input("Tickers (comma-separated)", value=st.session_state.get("dash_tickers", "AAPL, MSFT, NVDA, AMZN"))
+    period = st.selectbox("Period", ["6mo", "1y", "2y", "3y", "5y"], index=2)
+
+    pxs = load_prices(raw, period=period)
+    if not pxs.empty:
+        norm = pxs / pxs.iloc[0] * 100
+        st.line_chart(norm)
+        st.download_button("Download Data", data=pxs.to_csv().encode("utf-8"), file_name="prices.csv")
+
+    # Rolling risk
+    st.markdown("### Rolling Risk Analysis")
+    try:
+        t_sel = [t.strip() for t in raw.split(",") if t.strip()][0]
+        bench = "SPY"
+        prices_risk = load_prices([t_sel, bench], period=period)
+        a, b = prices_risk.iloc[:, 0], prices_risk.iloc[:, 1]
+        vol60 = rolling_vol(a)
+        beta60 = rolling_beta(a, b)
+        dd = max_drawdown(a)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Max Drawdown", f"{dd:.2%}")
+        c2.metric("Current 60d Vol", f"{vol60.iloc[-1]:.2%}")
+        c3.metric("Current 60d Beta vs SPY", f"{beta60.iloc[-1]:.2f}")
+        st.line_chart(pd.DataFrame({"60d Vol": vol60, "60d Beta": beta60}))
+    except Exception:
+        st.info("Select at least one ticker for risk metrics.")
+
+    # Sector snapshot
+    st.markdown("### Sector Snapshot (SPDR ETFs)")
+    sector_map = {"SPY":"SPY","XLK":"Tech","XLF":"Fin","XLE":"Energy","XLY":"Disc","XLV":"Health","XLP":"Staples"}
+    sec_df = load_prices(list(sector_map.keys()), period="6mo")
     if not sec_df.empty:
         perf = (sec_df.iloc[-1] / sec_df.iloc[0] - 1).sort_values(ascending=False)
-        perf = perf.rename(index={v: k for k, v in sector_map.items()})
         fig = px.bar(perf * 100, labels={"value": "Return (%)", "index": "Sector"}, height=380)
         st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("---")
-    st.markdown(
-        "<div class='smallnote'>Tip: Use the Optimizer page to convert views into weights, "
-        "compare Min-Variance vs Max-Sharpe, and justify allocations quantitatively.</div>",
-        unsafe_allow_html=True
-    )
-
-# ---------------------- PAGE: Portfolio Optimizer ----------------------
-elif page == "Portfolio Optimizer":
-    st.markdown("""
-    <div class="header-hero">
-      <h2 style="margin:0;">Modern Portfolio Theory Optimizer</h2>
-      <div class="smallnote">Long-only mean–variance optimization with efficient frontier, min-variance, and max-Sharpe solutions.</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    left, right = st.columns([1.35, 1])
-
-    with left:
-        st.subheader("Universe & Settings")
-        default_universe = "AAPL, MSFT, NVDA, AMZN, JPM, XOM, UNH, JNJ"
-        raw_u = st.text_input("Tickers (comma-separated)", value=default_universe)
-        period = st.selectbox("History period", ["1y", "2y", "3y", "5y"], index=2)
-        ret_type = st.selectbox("Return type", ["log", "simple"], index=0)
-        rf = st.number_input("Risk-free rate (annual, decimal)", value=0.02, step=0.005, format="%.3f")
-        lb = st.number_input("Weight lower bound", value=0.00, step=0.05, format="%.2f")
-        ub = st.number_input("Weight upper bound", value=1.00, step=0.05, format="%.2f")
-        points = st.slider("Frontier density", min_value=15, max_value=60, value=31, step=3)
-
-        st.markdown("Upload current weights (optional) — CSV columns: `Ticker,Weight`")
-        up = st.file_uploader("Upload weights CSV", type="csv")
-        current_w = None
-        if up is not None:
-            dfw = pd.read_csv(up)
-            dfw["Ticker"] = dfw["Ticker"].str.upper()
-            tickers_u = [t.strip().upper() for t in raw_u.split(",") if t.strip()]
-            weights = []
-            for t in tickers_u:
-                row = dfw[dfw["Ticker"] == t]
-                weights.append(float(row["Weight"].iloc[0]) if not row.empty else 0.0)
-            s = sum(weights)
-            if s > 0:
-                current_w = np.array(weights) / s
-
-        run = st.button("Run Optimization")
-
-    with right:
-        st.subheader("Methodology")
+    with st.expander("Methodology"):
         st.markdown("""
-- Prices from Yahoo Finance (adjusted close).
-- Annualization: mean and covariance × 252.
-- Optimization: SLSQP with equality ∑w=1 and bounds.
-- Outputs: Min-Variance, Max-Sharpe, and the efficient frontier.
+- Prices: Yahoo Finance (adjusted close)
+- Rolling metrics: 60-day window, annualized
+- Beta: covariance(asset, SPY) / variance(SPY)
+- Drawdown: min(Price/CumMax - 1)
+- Sectors: SPDR ETF family
         """)
-        st.markdown("<div class='smallnote'>Interpretation: Min-Var targets the lowest volatility; Max-Sharpe maximizes excess return per unit of risk.</div>", unsafe_allow_html=True)
+
+# ---------------------- PORTFOLIO OPTIMIZER ----------------------
+elif page == "Portfolio Optimizer":
+    st.markdown("## Modern Portfolio Theory Optimizer")
+    raw_u = st.text_input("Tickers", "AAPL, MSFT, NVDA, AMZN, JPM, XOM")
+    period = st.selectbox("History period", ["1y", "2y", "3y", "5y"], 2)
+    rf = st.number_input("Risk-free rate", 0.02, step=0.005)
+    lb = st.number_input("Lower bound", 0.0, 0.0, 1.0, 0.05)
+    ub = st.number_input("Upper bound", 1.0, 0.0, 1.0, 0.05)
+    run = st.button("Run Optimization")
 
     if run:
         tickers = [t.strip().upper() for t in raw_u.split(",") if t.strip()]
         prices = load_prices(tickers, period=period)
-        if prices.empty or prices.shape[1] < 2:
-            st.error("Not enough price data. Try different tickers or a longer period.")
-        else:
-            rets = to_returns(prices, method=ret_type)
-            mu, cov = annualize_stats(rets)
-            bounds = tuple((lb, ub) for _ in tickers)
+        rets = to_returns(prices)
+        mu, cov = annualize_stats(rets)
+        bounds = tuple((lb, ub) for _ in tickers)
+        w_minv = solve_min_variance(mu, cov, bounds)
+        w_msr = solve_max_sharpe(mu, cov, bounds, rf)
+        ef_ret, ef_vol = efficient_frontier(mu, cov, bounds)
 
-            # Optimize
-            w_minv = solve_min_variance(mu.values, cov.values, bounds=bounds, rf=rf)
-            w_msr  = solve_max_sharpe(mu.values, cov.values, bounds=bounds, rf=rf)
+        r_m, v_m, s_m = portfolio_perf(w_msr, mu, cov, rf)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=ef_vol, y=ef_ret, mode="lines", name="Frontier"))
+        fig.add_trace(go.Scatter(x=[v_m], y=[r_m], mode="markers", name="Max Sharpe", marker=dict(size=10)))
+        fig.update_layout(xaxis_title="Volatility", yaxis_title="Return")
+        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(pd.DataFrame({"Ticker":tickers,"MinVar":np.round(w_minv,4),"MaxSharpe":np.round(w_msr,4)}).set_index("Ticker"))
 
-            r_minv, v_minv, s_minv = portfolio_perf(w_minv, mu.values, cov.values, rf=rf)
-            r_msr,  v_msr,  s_msr  = portfolio_perf(w_msr,  mu.values, cov.values, rf=rf)
+# ---------------------- NEWS ----------------------
+elif page == "News":
+    st.title("Finance News")
+    feeds = {
+        "Reuters Business": "http://feeds.reuters.com/reuters/businessNews",
+        "WSJ Markets": "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"
+    }
+    src = st.selectbox("Source", list(feeds.keys()))
+    q = st.text_input("Keyword filter", "")
+    f = feedparser.parse(feeds[src])
+    for e in f.entries[:15]:
+        title = e.get("title","")
+        summ = e.get("summary","")
+        link = e.get("link","#")
+        blob = (title + " " + summ).lower()
+        if q and q.lower() not in blob:
+            continue
+        st.markdown(f"**[{title}]({link})**")
+        st.caption(e.get("published",""))
+        st.write(summ[:300] + ("..." if len(summ)>300 else ""))
+        st.markdown("---")
 
-            # Frontier
-            ef_ret, ef_vol = efficient_frontier(mu.values, cov.values, bounds=bounds, points=points)
-
-            # Plots
-            st.subheader("Efficient Frontier")
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=ef_vol, y=ef_ret, mode="lines", name="Frontier"))
-            fig.add_trace(go.Scatter(x=[v_minv], y=[r_minv], mode="markers", name="Min-Var", marker=dict(size=10)))
-            fig.add_trace(go.Scatter(x=[v_msr], y=[r_msr], mode="markers", name="Max-Sharpe", marker=dict(size=10)))
-            if current_w is not None:
-                rc, vc, sc = portfolio_perf(current_w, mu.values, cov.values, rf=rf)
-                fig.add_trace(go.Scatter(x=[vc], y=[rc], mode="markers", name="Current", marker=dict(size=10)))
-            fig.update_layout(xaxis_title="Volatility (annualized)", yaxis_title="Return (annualized)")
-            st.plotly_chart(fig, use_container_width=True)
-
-            st.subheader("Optimal Weights")
-            out = pd.DataFrame({
-                "Ticker": tickers,
-                "Min-Variance": np.round(w_minv, 4),
-                "Max-Sharpe":   np.round(w_msr, 4)
-            })
-            if current_w is not None:
-                out["Current"] = np.round(current_w, 4)
-            st.dataframe(out.set_index("Ticker"))
-
-            csv = out.to_csv(index=False).encode("utf-8")
-            st.download_button("Download weights (CSV)", data=csv, file_name="optimal_weights.csv", mime="text/csv")
-
-            st.subheader("Summary Metrics")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.markdown("**Min-Variance**")
-                st.write(f"Return: {r_minv:.2%}")
-                st.write(f"Volatility: {v_minv:.2%}")
-                st.write(f"Sharpe: {s_minv:.2f}")
-            with c2:
-                st.markdown("**Max-Sharpe**")
-                st.write(f"Return: {r_msr:.2%}")
-                st.write(f"Volatility: {v_msr:.2%}")
-                st.write(f"Sharpe: {s_msr:.2f}")
-            if current_w is not None:
-                with c3:
-                    st.markdown("**Current**")
-                    st.write(f"Return: {rc:.2%}")
-                    st.write(f"Volatility: {vc:.2%}")
-                    st.write(f"Sharpe: {sc:.2f}")
-
-            st.subheader("Correlation Heatmap")
-            corr = rets.corr()
-            figc = px.imshow(corr, text_auto=".2f", color_continuous_scale="RdBu_r", origin="lower", height=520)
-            st.plotly_chart(figc, use_container_width=True)
-
-            st.markdown("---")
-            st.markdown(
-                "<div class='smallnote'>Use cases in class: discuss trade-offs along the frontier, "
-                "effect of bounds, and how the risk-free rate shifts Max-Sharpe.</div>",
-                unsafe_allow_html=True
-            )
-
-# ---------------------- PAGE: About ----------------------
+# ---------------------- ABOUT ----------------------
 elif page == "About":
-    st.markdown("""
-    <div class="header-hero">
-      <h2 style="margin:0;">About this Project</h2>
-      <div class="smallnote">This app blends a Bloomberg-style market dashboard with a Modern Portfolio Theory optimizer.</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-**Design goals**
-- Appealing to a finance professor: clean structure, correct methodology, and clear interpretation.
-- Professional UX: guided inputs, KPIs, sector lens, and publishable charts.
-- Academic rigor: transparent assumptions (annualization, constraints, objective functions).
-
-**Suggested extensions**
-- Factor models (Fama–French 3/5), rolling beta and volatility.
-- Transaction costs and turnover penalties.
-- Sector and single-name concentration caps.
-- Benchmark comparison and out-of-sample backtests.
-    """)
-
-    st.markdown("<hr>", unsafe_allow_html=True)
-    st.markdown(
-        "<div style='text-align:center; color:#6b7b91'>PSP Finance — Global Market Intelligence & Portfolio Optimization</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown("## About PSP Finance")
+    st.write("""
+This is a finance research and learning platform built to impress even the most detail-oriented professors.
+It replicates Bloomberg-style dashboards and MPT analytics.
+- **Dashboard:** multi-ticker, sectors, rolling risk, watchlist.
+- **Optimizer:** mean-variance with efficient frontier.
+- **News:** real-time feeds for global financial updates.
+""")
