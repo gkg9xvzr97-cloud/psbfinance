@@ -1,9 +1,20 @@
-# PSP Finance — Global Market Dashboard + Portfolio Optimizer
-# Clean, guided, and academically rigorous.
-# -----------------------------------------------------------
-# How to run:
-#   pip install -r requirements.txt
-#   streamlit run app.py
+# app.py — PSP Finance: Global Market Dashboard + Portfolio Optimizer
+# -------------------------------------------------------------------
+# How to run locally:
+#   1) Create requirements.txt with:
+#        streamlit
+#        yfinance
+#        pandas
+#        numpy
+#        plotly
+#        scipy
+#   2) pip install -r requirements.txt
+#   3) streamlit run app.py
+#
+# Notes:
+# - Data source: Yahoo Finance via yfinance (free)
+# - Optimizer: Mean–Variance (SLSQP), Min-Variance & Max-Sharpe + Efficient Frontier
+# - UI: Guided, clean, professor-friendly
 
 import numpy as np
 import pandas as pd
@@ -16,7 +27,7 @@ from scipy.optimize import minimize
 # ---------------------- Page Config & Styling ----------------------
 st.set_page_config(page_title="PSP Finance — Dashboard & Optimizer", layout="wide")
 
-# Subtle professional CSS
+# Subtle professional CSS (no emojis; finance-first look)
 st.markdown("""
 <style>
 :root{
@@ -56,14 +67,14 @@ page = st.sidebar.radio("Navigate", ["Dashboard", "Portfolio Optimizer", "About"
 with st.sidebar.expander("How to use", expanded=True):
     st.markdown("""
 **Dashboard**
-1) Type tickers in the search bar, e.g. `AAPL, MSFT, NVDA`.
+1) Type tickers in the search bar (e.g., `AAPL, MSFT, NVDA`).
 2) Review normalized performance, index KPIs, and sector returns.
 
 **Portfolio Optimizer**
 1) Enter tickers and choose history period.
 2) Set bounds and risk-free rate.
-3) Click **Run Optimization** to see the efficient frontier, Min-Var, and Max-Sharpe portfolios.
-4) Optional: upload your current weights (CSV: `Ticker,Weight`) to compare.
+3) Click **Run Optimization** to see the efficient frontier, Min-Variance, and Max-Sharpe portfolios.
+4) Optional: upload your current weights (CSV columns: `Ticker,Weight`) to compare.
     """)
 
 # ---------------------- Helpers & Cache ----------------------
@@ -343,7 +354,7 @@ elif page == "About":
 - Academic rigor: transparent assumptions (annualization, constraints, objective functions).
 
 **Suggested extensions**
-- Factor models (Fama-French 3/5), rolling beta and volatility.
+- Factor models (Fama–French 3/5), rolling beta and volatility.
 - Transaction costs and turnover penalties.
 - Sector and single-name concentration caps.
 - Benchmark comparison and out-of-sample backtests.
