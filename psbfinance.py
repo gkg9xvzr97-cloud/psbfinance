@@ -1,93 +1,61 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
 import requests
-import plotly.graph_objs as go
+import os
+from dotenv import load_dotenv
 
-# --- Sidebar About ---
-st.sidebar.title("About This App")
-st.sidebar.info("""
-A Yahoo Finance-like dashboard.  
-- Live stock quotes and charts  
-- Latest financial news  
-- Company info & comparisons  
-- Made with Streamlit, yfinance, newsapi
-""")
+# Load your API key from the .env file
+load_dotenv()
+API_KEY = os.getenv('API_KEY')
 
-st.title("Yahoo Finance Style Dashboard")
-
-st.write("""
-**Track stocks, read the latest news, and visualize financial metrics — all in one place.**
-""")
-
-# --- Select Company Symbol ---
-st.header("Search Stock Symbol")
-symbol = st.text_input("Enter Symbol", "AAPL").upper()
-start_date = st.date_input("Start Date", pd.to_datetime("2023-01-01"))
-end_date = st.date_input("End Date", pd.to_datetime("today"))
-
-# --- Fetch Data ---
-@st.cache_data
-def get_data(symbol, start, end):
-    return yf.download(symbol, start=start, end=end)
-
-try:
-    df = get_data(symbol, start_date, end_date)
-except Exception as e:
-    st.error("Couldn't fetch data")
-
-# --- Overview & Company Info ---
-st.header("Company Information")
-company = yf.Ticker(symbol)
-info = company.info
-st.subheader(f"{info.get('longName', symbol)}")
-st.write(info.get('longBusinessSummary', 'No business summary available.'))
-
-# --- Price Plot ---
-st.header("Stock Price")
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', name='Close'))
-fig.update_layout(title=f"{symbol} Stock Price", xaxis_title="Date", yaxis_title="Price ($)")
-st.plotly_chart(fig)
-
-# --- Volume Plot ---
-st.header("Volume")
-fig2 = go.Figure()
-fig2.add_trace(go.Bar(x=df.index, y=df['Volume'], name='Volume'))
-fig2.update_layout(title=f"{symbol} Volume", xaxis_title="Date", yaxis_title="Volume")
-st.plotly_chart(fig2)
-
-# --- Comparison Plot ---
-st.header("Compare With Another Symbol")
-compare_symbol = st.text_input("Compare With (Symbol)", "MSFT").upper()
-df_compare = get_data(compare_symbol, start_date, end_date)
-comp_df = pd.DataFrame({symbol: df['Close'], compare_symbol: df_compare['Close']}).dropna()
-fig3 = go.Figure()
-for s in comp_df.columns:
-    fig3.add_trace(go.Scatter(x=comp_df.index, y=comp_df[s], mode='lines', name=s))
-fig3.update_layout(title=f"{symbol} vs {compare_symbol}", xaxis_title="Date", yaxis_title="Price ($)")
-st.plotly_chart(fig3)
-
-# --- Financial News Section ---
-st.header("Latest News")
-def get_news(symbol):
-    # Replace YOUR_NEWSAPI_KEY with your actual key
-    url = f"https://newsapi.org/v2/everything?q={symbol}&apiKey=YOUR_NEWSAPI_KEY&pageSize=5"
+def fetch_data(symbol):
+    """Fetches daily close prices for the given stock symbol from Alpha Vantage."""
+    url = (
+        "https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED"
+        f"&symbol={symbol}&outputsize=compact&apikey={API_KEY}"
+    )
     r = requests.get(url)
-    articles = r.json().get("articles", [])
-    return articles
+    data = r.json()
+    # Error handling for API response
+    if "Time Series (Daily)" not in data:
+        return None
+    df = pd.DataFrame(data["Time Series (Daily)"]).T
+    df = df.rename(columns={"5. adjusted close": "Close"})
+    df["Close"] = pd.to_numeric(df["Close"], errors="coerce")
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+    return df[["Close"]]
 
-news = get_news(symbol)
-for n in news:
-    st.subheader(n.get('title', 'No title'))
-    st.write(n.get('description', ''))
-    st.markdown(f"[Read more]({n.get('url', '#')})")
+st.title("📈 Stock Comparison App")
 
-# --- How It Works Section ---
-st.sidebar.header("How To Use")
-st.sidebar.markdown("""
-- Type in a stock ticker & time period  
-- Get company info, price, volume  
-- Compare with another symbol  
-- Read up-to-date financial news  
+st.subheader("Compare closing prices of two stocks")
+
+symbol = st.text_input("Enter Main Ticker (e.g. AAPL)", "AAPL")
+compare_symbol = st.text_input("Enter Compare Ticker (e.g. MSFT)", "MSFT")
+
+if st.button("Compare"):
+    if not API_KEY:
+        st.error("API Key not found. Please set it in your .env file.")
+    else:
+        with st.spinner("Fetching data..."):
+            df = fetch_data(symbol)
+            df_compare = fetch_data(compare_symbol)
+
+        # Error checks on returned data
+        if (df is None or df.empty) or (df_compare is None or df_compare.empty):
+            st.error("Failed to fetch stock data for one or both tickers. Check ticker spelling and API key/limits.")
+        else:
+            # Align and concatenate by date index
+            comp_df = pd.concat([df["Close"], df_compare["Close"]], axis=1, join='inner')
+            comp_df.columns = [symbol, compare_symbol]
+            comp_df = comp_df.dropna()
+            st.line_chart(comp_df)
+            st.write("Recent data comparison:", comp_df.tail())
+            st.success("Chart generated successfully!")
+
+st.markdown("""
+*Features included:*
+- Secure API key handling (.env)
+- Ticker error handling
+- Financial-style chart and data table
 """)
