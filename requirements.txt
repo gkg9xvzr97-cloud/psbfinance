@@ -17,6 +17,7 @@ openai
 scikit-learn
 pillow
 scipy
+python-dotenv
 
 
 
