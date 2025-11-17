@@ -1,210 +1,92 @@
-# app.py
-
 import streamlit as st
-
-# ---------------------- Page Config ----------------------
-st.set_page_config(page_title="PSP Finance", layout="wide")
-
-# ---------------------- Custom Styling ----------------------
-st.markdown("""
-<style>
-:root{
-  --ink:#0e1a2b; --muted:#6b7b91; --card:#f6f8fb; --accent:#0d6efd;
-}
-html, body, .block-container { color: var(--ink); }
-.stButton>button {
-  background: var(--accent); color: #fff; border: 0; border-radius: 10px;
-  padding: 10px 18px; font-weight: 600;
-}
-.card {
-  background: var(--card); border: 1px solid #e6ebf2; border-radius: 14px; padding: 16px 18px;
-}
-.smallnote { color: var(--muted); font-size: 13px; }
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------------- Navigation ----------------------
-PAGES = [
-    "Home",
-    "Dashboard",
-    "Portfolio Optimizer",
-    "Failed Companies",
-    "Unpopular Investments",
-    "Why Financial Models Fail",
-    "Charts & Data",
-    "Lessons for the Future",
-    "News Feed",
-    "Public Company Financials Lookup",
-    "About"
-]
-
-st.sidebar.title("PSP Finance")
-page = st.sidebar.radio("Navigate", PAGES)
-
-# ---------------------- Page Functions ----------------------
-def home():
-    st.title("Welcome to PSP Finance")
-    st.write("This is the starting point. We’ll add features step by step.")
-
-def dashboard():
-    st.title("Dashboard")
-    st.info("Placeholder: will show live market charts and risk metrics.")
-
-def optimizer():
-    st.title("Portfolio Optimizer")
-    st.info("Placeholder: will implement Modern Portfolio Theory.")
-
-def failed_companies():
-    st.title("Failed Companies")
-    st.info("Placeholder: case studies like Enron, Lehman Brothers, Wirecard.")
-
-def unpopular_investments():
-    st.title("Unpopular Investments")
-    st.info("Placeholder: assets that underperformed or lost investor confidence.")
-
-def models_fail():
-    st.title("Why Financial Models Fail")
-    st.info("Placeholder: explanations of model limitations.")
-
-def charts_data():
-    st.title("Charts & Data")
-    st.info("Placeholder: company comparisons, index performance, risk/return scatter.")
-
-def lessons_future():
-    st.title("Lessons for the Future")
-    st.info("Placeholder: diversification, risk management, realistic assumptions.")
-
-def news_feed():
-    st.title("News Feed")
-    st.info("Placeholder: finance RSS feeds and keyword filters.")
-
-def financials_lookup():
-    st.title("Public Company Financials Lookup")
-    st.info("Placeholder: income statement, balance sheet, cash flow.")
-
-def about():
-    st.title("About PSP Finance")
-    st.markdown("""
-    ### What is PSP Finance?
-    PSP Finance is a research and learning platform that combines **live market data**,  
-    **portfolio optimization models**, and **educational case studies**.
-
-    ### Features
-    - **Dashboard:** Multi-ticker charts, rolling risk, sector snapshots.
-    - **Portfolio Optimizer:** Mean-variance analytics, efficient frontier, Sharpe ratio.
-    - **Failed Companies:** Case studies of collapsed firms.
-    - **Unpopular Investments:** Lessons from risky bets.
-    - **Why Models Fail:** Educational breakdown of assumptions and pitfalls.
-    - **Charts & Data:** Company comparisons, index performance, risk/return scatter.
-    - **Lessons for the Future:** Practical takeaways for investors.
-    - **News Feed:** Live updates from financial sources.
-    - **Financials Lookup:** Company fundamentals (Income, Balance Sheet, Cash Flow).
-    """)
-
-# ---------------------- Router ----------------------
-ROUTES = {
-    "Home": home,
-    "Dashboard": dashboard,
-    "Portfolio Optimizer": optimizer,
-    "Failed Companies": failed_companies,
-    "Unpopular Investments": unpopular_investments,
-    "Why Financial Models Fail": models_fail,
-    "Charts & Data": charts_data,
-    "Lessons for the Future": lessons_future,
-    "News Feed": news_feed,
-    "Public Company Financials Lookup": financials_lookup,
-    "About": about,
-}
-
-ROUTES[page]()
-import yfinance as yf
 import pandas as pd
-import numpy as np
+import yfinance as yf
+import plotly.express as px
 
-# Utility: load prices
-@st.cache_data(ttl=300)
-def load_prices(tickers, period="1y", interval="1d"):
-    if isinstance(tickers, str):
-        tickers = [t.strip().upper() for t in tickers.split(",") if t.strip()]
-    if not tickers:
-        return pd.DataFrame()
-    df = yf.download(tickers, period=period, interval=interval, auto_adjust=True, progress=False)
-    if isinstance(df.columns, pd.MultiIndex):
-        df = df["Close"]
-    return df.dropna(how="all")
+# --------- About Section ---------
+st.sidebar.title("About This Finance App")
+st.sidebar.markdown("""
+**Finance Dashboard Project**
 
-# Risk metrics
-def rolling_vol(series, window=60):
-    rets = series.pct_change().dropna()
-    return (rets.rolling(window).std() * np.sqrt(252)).dropna()
+- Real-time stock data & interactive charts
+- Compare asset performance (Stocks/Crypto/Forex)
+- Analysis: Returns, Volatility, Trends
+- Explanation of all sections
+- Built with **Streamlit** and **Plotly**
+""")
 
-def rolling_beta(asset, benchmark, window=60):
-    ar = asset.pct_change().dropna()
-    br = benchmark.pct_change().dropna()
-    idx = ar.index.intersection(br.index)
-    ar, br = ar.loc[idx], br.loc[idx]
-    cov = ar.rolling(window).cov(br)
-    var = br.rolling(window).var()
-    return (cov / var).dropna()
+st.title("Finance Dashboard")
+st.markdown("""
+Welcome to your personalized Finance App!  
+Fetch, compare, and visualize market data like **Yahoo Finance** or **Bloomberg**.  
+_Explore stock/crypto performance, compare different symbols, and understand financial metrics visually._
+""")
 
-def max_drawdown(series):
-    cummax = series.cummax()
-    dd = (series / cummax) - 1.0
-    return float(dd.min())
+# --------- Symbol Selection ---------
+st.header("Select Assets to Analyze")
 
-# Dashboard page
-def dashboard():
-    st.title("Global Market Dashboard")
+symbols = st.text_input("Enter stock tickers separated by comma (e.g., AAPL, TSLA, MSFT):", "AAPL,TSLA,MSFT")
+symbols = [s.strip().upper() for s in symbols.split(",") if s.strip()]
 
-    # Presets
-    presets = {
-        "US Tech": "AAPL, MSFT, NVDA, AMZN, GOOGL",
-        "US Banks": "JPM, BAC, WFC, C",
-        "Energy": "XOM, CVX, SLB, BP",
-        "Europe": "NESN.SW, ASML.AS, SAP.DE, SIE.DE",
-        "Crypto": "BTC-USD, ETH-USD"
-    }
+start_date = st.date_input("Start Date:", pd.to_datetime("2023-01-01"))
+end_date = st.date_input("End Date:", pd.to_datetime("today"))
 
-    st.caption("💡 Try presets or enter your own tickers.")
-    cols = st.columns(len(presets))
-    for i, (label, tick) in enumerate(presets.items()):
-        if cols[i].button(label):
-            st.session_state["dash_tickers"] = tick
+if not symbols:
+    st.warning("Please enter at least one asset symbol.")
+    st.stop()
 
-    raw = st.text_input("Tickers (comma-separated)", value=st.session_state.get("dash_tickers", "AAPL, MSFT, NVDA"))
-    period = st.selectbox("Period", ["6mo", "1y", "2y", "3y", "5y"], index=1)
+# --------- Data Download ---------
+@st.cache_data
+def fetch_data(symbols, start, end):
+    raw_data = yf.download(symbols, start=start, end=end, group_by="ticker", threads=True)
+    return raw_data
 
-    pxs = load_prices(raw, period=period)
-    if not pxs.empty:
-        norm = pxs / pxs.iloc[0] * 100
-        st.line_chart(norm)
-        st.download_button("Download Data", data=pxs.to_csv().encode("utf-8"), file_name="prices.csv")
+data = fetch_data(symbols, start_date, end_date)
 
-        # Rolling risk metrics
-        st.markdown("### Rolling Risk Analysis")
-        try:
-            t_sel = [t.strip() for t in raw.split(",") if t.strip()][0]
-            bench = "SPY"
-            prices_risk = load_prices([t_sel, bench], period=period)
-            a, b = prices_risk.iloc[:, 0], prices_risk.iloc[:, 1]
-            vol60 = rolling_vol(a)
-            beta60 = rolling_beta(a, b)
-            dd = max_drawdown(a)
+# --------- Plots and Comparisons ---------
+st.header("Plots & Comparisons")
 
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Max Drawdown", f"{dd:.2%}")
-            c2.metric("Current 60d Vol", f"{vol60.iloc[-1]:.2%}")
-            c3.metric("Current 60d Beta vs SPY", f"{beta60.iloc[-1]:.2f}")
+for symbol in symbols:
+    st.subheader(f"{symbol} — Price Chart")
+    price_data = data['Close'][symbol] if len(symbols) > 1 else data['Close']
+    fig = px.line(price_data, title=f"{symbol} Closing Price")
+    st.plotly_chart(fig)
 
-            st.line_chart(pd.DataFrame({"60d Vol": vol60, "60d Beta": beta60}))
-        except Exception:
-            st.info("Select at least one ticker for risk metrics.")
+# Comparison Plot
+st.subheader("Compare Price Trends")
+comp_df = data['Close'] if len(symbols) > 1 else pd.DataFrame(data['Close'])
+fig2 = px.line(comp_df, title="Price Comparison")
+st.plotly_chart(fig2)
 
-        # Sector snapshot
-        st.markdown("### Sector Snapshot (SPDR ETFs)")
-        sector_map = {"SPY":"S&P 500","XLK":"Tech","XLF":"Financials","XLE":"Energy","XLY":"Consumer Disc","XLV":"Health","XLP":"Staples"}
-        sec_df = load_prices(list(sector_map.keys()), period="6mo")
-        if not sec_df.empty:
-            perf = (sec_df.iloc[-1] / sec_df.iloc[0] - 1).sort_values(ascending=False)
-            perf.index = [sector_map.get(k, k) for k in perf.index]
-            st.bar_chart(perf * 100)
+# --------- Financial Metrics ---------
+st.header("Financial Metrics and Stats")
+
+metrics_df = pd.DataFrame()
+for symbol in symbols:
+    prices = data['Close'][symbol] if len(symbols) > 1 else data['Close']
+    returns = prices.pct_change().dropna()
+    metrics_df[symbol] = [
+        prices.mean(),              # Average Price
+        returns.mean() * 252,       # Annualized Return
+        returns.std() * (252**0.5), # Annualized Volatility
+        prices.max(),               # Highest Price
+        prices.min()                # Lowest Price
+    ]
+metrics_df.index = ["Avg Price", "Ann. Return", "Ann. Volatility", "Max Price", "Min Price"]
+st.dataframe(metrics_df)
+
+# --------- How It Works ---------
+st.header("How It Works")
+st.markdown("""
+- **Select assets:** Type tickers in the box (e.g., AAPL, TSLA)
+- **Choose period:** Use date selectors for analysis range
+- **Visualizations:** View price trends and comparison for selected assets
+- **Stats Table:** Quick look at average, returns, volatility, max/min prices
+- **About Section:** Info on use, tech, and structure
+""")
+
+st.info("""
+**Expand Further:**  
+You can add more asset types (crypto, forex) using different APIs, and more advanced analytics (correlation, risk metrics, moving averages, etc).
+""")
+
