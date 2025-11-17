@@ -175,7 +175,7 @@ if page == "Dashboard":
     st.markdown("""
     <div class="header-hero">
       <h2>Global Market Intelligence</h2>
-      <div class="smallnote">A research-grade dashboard inspired by Bloomberg and Yahoo Finance.</div>
+      <div class="smallnote">A research-grade dashboard inspired by finance researcher .</div>
     </div>
     """, unsafe_allow_html=True)
 
