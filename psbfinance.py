@@ -14,7 +14,23 @@ import feedparser
 from scipy.optimize import minimize
 
 # ---------------------- Page Config & Styling ----------------------
-st.set_page_config(page_title="PSP Finance — Dashboard & Optimizer", layout="wide")
+st.sidebar.title("PSP Finance")
+page = st.sidebar.radio("Navigate", [
+    "Home",
+    "Dashboard",
+    "Portfolio Optimizer",
+    "Failed Companies",
+    "Unpopular Investments",
+    "Why Financial Models Fail",
+    "Charts & Data",
+    "Lessons for the Future",
+    "News Feed",
+    "Public Company Financials Lookup",
+    "About"
+])
+if page == "Home":
+    st.title("Welcome to PSP Finance")
+    st.write("Explore dashboards, optimizers, company case studies, and live market data.")
 
 # --- Custom CSS ---
 st.markdown("""
@@ -358,3 +374,54 @@ elif page == "About":
     - **Optimizer:** mean-variance with efficient frontier.
     - **News:** real-time feeds for global financial updates.
     """)
+if page == "Failed Companies":
+    st.header("Case Studies: Failed Companies")
+    company = st.selectbox("Choose a company", ["Enron", "Lehman Brothers", "Wirecard"])
+    st.write(f"Showing financial history for {company}...")
+    # Placeholder for chart
+    st.line_chart(pd.DataFrame({"Revenue":[...], "Net Income":[...]}))
+if page == "Unpopular Investments":
+    st.header("Unpopular Investments")
+    st.write("Explore assets that lost investor confidence.")
+    # Example: show chart of a failed ETF
+if page == "Why Financial Models Fail":
+    st.header("Why Financial Models Fail")
+    st.markdown("""
+    - Overfitting historical data
+    - Ignoring black swan events
+    - Unrealistic assumptions
+    """)
+if page == "Charts & Data":
+    st.header("Charts & Data")
+    chart_type = st.selectbox("Choose chart", [
+        "Company Comparison", "Stock History", "Index Performance", "Risk/Return Scatter"
+    ])
+    if chart_type == "Index Performance":
+        indices = load_prices(["^GSPC","^IXIC","^DJI","^FCHI","^FTSE"], period="1y")
+        st.line_chart(indices / indices.iloc[0] * 100)
+if page == "Lessons for the Future":
+    st.header("Lessons for the Future")
+    st.write("Diversification, realistic assumptions, and risk management are key.")
+if page == "News Feed":
+    st.header("Finance News")
+    feeds = {
+        "Yahoo Finance": "https://finance.yahoo.com/rss/",
+        "Google News Finance": "https://news.google.com/rss/search?q=finance"
+    }
+    src = st.selectbox("Source", list(feeds.keys()))
+    f = feedparser.parse(feeds[src])
+    for e in f.entries[:10]:
+        st.markdown(f"**[{e.title}]({e.link})**")
+        st.caption(e.get("published",""))
+        st.write(e.get("summary",""))
+if page == "Public Company Financials Lookup":
+    st.header("Company Financials Lookup")
+    ticker = st.text_input("Enter ticker (e.g., AAPL)")
+    if ticker:
+        stock = yf.Ticker(ticker)
+        st.subheader("Income Statement")
+        st.dataframe(stock.financials.T)
+        st.subheader("Balance Sheet")
+        st.dataframe(stock.balance_sheet.T)
+        st.subheader("Cash Flow")
+        st.dataframe(stock.cashflow.T)
