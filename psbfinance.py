@@ -1,60 +1,115 @@
-import React from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import streamlit as st
+import pandas as pd
+import yfinance as yf
+import plotly.express as px
 
-export default function FinanceFailuresAnalytics() {
-  const sampleData = [
-    { name: "2019", value: 120 },
-    { name: "2020", value: 80 },
-    { name: "2021", value: 150 },
-    { name: "2022", value: 60 },
-  ];
+st.set_page_config(page_title="Finance Failures Analytics", layout="wide")
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-6 space-y-8">
-      <header className="text-center">
-        <h1 className="text-4xl font-bold">Finance Failures Analytics</h1>
-        <p className="text-gray-600 mt-2">Analyze failed companies, unpopular investments, and failed financial models</p>
-      </header>
+st.title("📉 Finance Failures Analytics")
+st.write("Analyze failed companies, unpopular investments, and financial model breakdowns.")
 
-      <section className="grid md:grid-cols-2 gap-6">
-        <Card className="shadow-xl rounded-2xl">
-          <CardContent className="p-6">
-            <h2 className="text-2xl font-semibold mb-4">Failed Companies</h2>
-            <p className="text-gray-700 mb-4">A database of major companies that collapsed due to financial mismanagement, fraud, or poor strategy.</p>
-            <Button>View Companies</Button>
-          </CardContent>
-        </Card>
+# Sidebar Navigation
+page = st.sidebar.selectbox(
+    "Navigate",
+    [
+        "Home",
+        "Failed Companies",
+        "Unpopular Investments",
+        "Financial Model Failures",
+        "Charts & Data",
+        "News",
+        "Public Company Financials",
+    ]
+)
 
-        <Card className="shadow-xl rounded-2xl">
-          <CardContent className="p-6">
-            <h2 className="text-2xl font-semibold mb-4">Unpopular Investments</h2>
-            <p className="text-gray-700 mb-4">Explore assets that are avoided by investors and analyze their risks and returns.</p>
-            <Button>Explore</Button>
-          </CardContent>
-        </Card>
-      </section>
+# Home Page
+if page == "Home":
+    st.header("🏠 Home")
+    st.write("Welcome to the Finance Failures Analytics dashboard.")
 
-      <section className="p-6 bg-white rounded-2xl shadow-xl">
-        <h2 className="text-2xl font-semibold mb-6">Sample Index Comparison Chart</h2>
-        <LineChart width={600} height={300} data={sampleData}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="name" />
-          <YAxis />
-          <Tooltip />
-          <Line type="monotone" dataKey="value" stroke="black" />
-        </LineChart>
-      </section>
+# Failed Companies Page
+elif page == "Failed Companies":
+    st.header("💀 Failed Companies")
 
-      <section className="p-6 bg-white rounded-2xl shadow-xl">
-        <h2 className="text-2xl font-semibold mb-6">Latest Finance News</h2>
-        <p>Dynamic news feed will be integrated here using a news API.</p>
-      </section>
+    failed_list = {
+        "Lehman Brothers": "Bankruptcy due to subprime crisis (2008)",
+        "Enron": "Fraud & accounting scandal (2001)",
+        "FTX": "Crypto fraud collapse (2022)",
+        "Kodak": "Failure to innovate (2012)",
+    }
 
-      <footer className="text-center text-gray-600 mt-12">
-        <p>© 2025 Finance Failures Analytics | Built for Tech for Business</p>
-      </footer>
-    </div>
-  );
-}
+    st.write(pd.DataFrame.from_dict(failed_list, orient="index", columns=["Reason for Failure"]))
+
+# Unpopular Investments
+elif page == "Unpopular Investments":
+    st.header("📉 Unpopular Investments")
+
+    unpopular = {
+        "Penny Stocks": "Highly speculative & risky",
+        "Annuities": "Low returns & long lock-in periods",
+        "Municipal Bonds": "Low interest, low risk",
+        "Long-term Bonds": "Highly sensitive to inflation",
+    }
+
+    st.write(pd.DataFrame.from_dict(unpopular, orient="index", columns=["Why Unpopular"]))
+
+# Financial Model Failures
+elif page == "Financial Model Failures":
+    st.header("📊 Why Financial Models Fail")
+    st.write(
+        """
+        Common reasons:
+        - Wrong assumptions
+        - Overfitting
+        - Ignoring market shocks
+        - Human behavioral biases
+        - Poor data quality
+        """
+    )
+
+# Charts & Data
+elif page == "Charts & Data":
+    st.header("📈 Index Comparison Chart")
+
+    tickers = ["^GSPC", "^IXIC", "^DJI"]
+    names = {"^GSPC": "S&P 500", "^IXIC": "NASDAQ", "^DJI": "Dow Jones"}
+
+    data = {}
+    for t in tickers:
+        df = yf.download(t, period="1y")
+        data[names[t]] = df["Close"]
+
+    combined = pd.DataFrame(data)
+    fig = px.line(combined, title="Market Index Comparison")
+    st.plotly_chart(fig, use_container_width=True)
+
+# News Page
+elif page == "News":
+    st.header("📰 Finance News (Static Placeholder)")
+    st.write("Live news API can be added.")
+
+# Public Company Financials
+elif page == "Public Company Financials":
+    st.header("🏢 Public Company Financial Lookup")
+
+    symbol = st.text_input("Enter Stock Symbol (e.g., AAPL, TSLA, AMZN)")
+
+    if symbol:
+        stock = yf.Ticker(symbol)
+
+        st.subheader("📄 Income Statement")
+        st.write(stock.financials)
+
+        st.subheader("📂 Balance Sheet")
+        st.write(stock.balance_sheet)
+
+        st.subheader("💵 Cash Flow")
+        st.write(stock.cashflow)
+
+        hist = stock.history(period="1y")
+        fig = px.line(hist, y="Close", title=f"{symbol} Price History (1 year)")
+        st.plotly_chart(fig, use_container_width=True)
+
+st.write("
+---
+&copy; 2025 Finance Failures Analytics | Built for Tech for Business")
