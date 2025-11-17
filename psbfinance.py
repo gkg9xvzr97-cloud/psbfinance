@@ -67,38 +67,54 @@ if st.sidebar.button("Clear Watchlist"):
 
 @st.cache_data(ttl=300)
 def load_prices(tickers, period="3y", interval="1d"):
+    # Accept string "AAPL, MSFT" or list ["AAPL","MSFT"]
     if isinstance(tickers, str):
         tickers = [t.strip().upper() for t in tickers.split(",") if t.strip()]
     if not tickers:
         return pd.DataFrame()
     df = yf.download(tickers, period=period, interval=interval, auto_adjust=True, progress=False)
+    # If multiple tickers, yfinance returns a MultiIndex; select Close level
     if isinstance(df.columns, pd.MultiIndex):
-        df = df["Close"]
+        # Safely select Close; if not present, fallback to first level
+        if "Close" in df.columns.get_level_values(0):
+            df = df["Close"]
+        elif "Adj Close" in df.columns.get_level_values(0):
+            df = df["Adj Close"]
+        else:
+            # unexpected structure; try to flatten
+            df = df.droplevel(0, axis=1)
     return df.dropna(how="all")
 
+# Show watchlist mini-table
 if st.session_state.watchlist:
     wl_px = load_prices(st.session_state.watchlist, period="5d")
-    if not wl_px.empty:
+    if not wl_px.empty and len(wl_px) >= 2:
         last = wl_px.iloc[-1]
-        prev = wl_px.iloc[-2] if len(wl_px) > 1 else last
+        prev = wl_px.iloc[-2]
         table = pd.DataFrame({
             "Price": last,
             "1d %": ((last/prev - 1.0) * 100.0).round(2)
         })
         st.sidebar.dataframe(table)
+    elif not wl_px.empty:
+        st.sidebar.info("Not enough data points for daily change yet.")
 
 # ---------------------- Utility Functions ----------------------
 def to_returns(prices, method="log"):
+    if prices is None or prices.empty:
+        return pd.DataFrame()
     if method == "log":
         rets = np.log(prices / prices.shift(1))
     else:
         rets = prices.pct_change()
-    return rets.dropna()
+    return rets.dropna(how="all")
 
 def annualize_stats(returns, periods_per_year=252):
+    if returns is None or returns.empty:
+        return np.array([]), np.array([[]])
     mu = returns.mean() * periods_per_year
     cov = returns.cov() * periods_per_year
-    return mu, cov
+    return mu.values, cov.values
 
 def portfolio_perf(weights, mu, cov, rf=0.0):
     w = np.array(weights)
@@ -144,28 +160,34 @@ def efficient_frontier(mu, cov, bounds, points=30):
 
 def kpi_card(title, value, note=""):
     st.markdown(f"""
-    <div class="card">
-        <div><span class="pipe"></span><strong>{title}</strong></div>
-        <div class="kpi">{value}</div>
-        <div class="kpi-note">{note}</div>
-    </div>
-    """, unsafe_allow_html=True)
+<div class="card">
+  <div><span class="pipe"></span><strong>{title}</strong></div>
+  <div class="kpi">{value}</div>
+  <div class="kpi-note">{note}</div>
+</div>
+""", unsafe_allow_html=True)
 
 # Rolling stats
 def rolling_vol(series, window=60):
     rets = series.pct_change().dropna()
-    return (rets.rolling(window).std() * np.sqrt(252)).dropna()
+    out = (rets.rolling(window).std() * np.sqrt(252)).dropna()
+    return out
 
 def rolling_beta(asset, benchmark, window=60):
     ar = asset.pct_change().dropna()
     br = benchmark.pct_change().dropna()
     idx = ar.index.intersection(br.index)
+    if idx.empty:
+        return pd.Series(dtype=float)
     ar, br = ar.loc[idx], br.loc[idx]
     cov = ar.rolling(window).cov(br)
     var = br.rolling(window).var()
-    return (cov / var).dropna()
+    beta = (cov / var).dropna()
+    return beta
 
 def max_drawdown(series):
+    if series.empty:
+        return np.nan
     cummax = series.cummax()
     dd = (series / cummax) - 1.0
     return float(dd.min())
@@ -175,7 +197,7 @@ if page == "Dashboard":
     st.markdown("""
     <div class="header-hero">
       <h2>Global Market Intelligence</h2>
-      <div class="smallnote">A research-grade dashboard inspired by finance researcher .</div>
+      <div class="smallnote">A research-grade dashboard for multi-asset monitoring and risk insights.</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -192,6 +214,7 @@ if page == "Dashboard":
     for i, (label, tick) in enumerate(presets.items()):
         if cols[i].button(label):
             st.session_state["dash_tickers"] = tick
+
     raw = st.text_input("Tickers (comma-separated)", value=st.session_state.get("dash_tickers", "AAPL, MSFT, NVDA, AMZN"))
     period = st.selectbox("Period", ["6mo", "1y", "2y", "3y", "5y"], index=2)
 
@@ -200,6 +223,8 @@ if page == "Dashboard":
         norm = pxs / pxs.iloc[0] * 100
         st.line_chart(norm)
         st.download_button("Download Data", data=pxs.to_csv().encode("utf-8"), file_name="prices.csv")
+    else:
+        st.info("No price data found for the selected tickers/period.")
 
     # Rolling risk
     st.markdown("### Rolling Risk Analysis")
@@ -207,63 +232,90 @@ if page == "Dashboard":
         t_sel = [t.strip() for t in raw.split(",") if t.strip()][0]
         bench = "SPY"
         prices_risk = load_prices([t_sel, bench], period=period)
+        if prices_risk.empty or prices_risk.shape[1] < 2:
+            raise ValueError("Insufficient data for risk metrics.")
         a, b = prices_risk.iloc[:, 0], prices_risk.iloc[:, 1]
         vol60 = rolling_vol(a)
         beta60 = rolling_beta(a, b)
         dd = max_drawdown(a)
         c1, c2, c3 = st.columns(3)
-        c1.metric("Max Drawdown", f"{dd:.2%}")
-        c2.metric("Current 60d Vol", f"{vol60.iloc[-1]:.2%}")
-        c3.metric("Current 60d Beta vs SPY", f"{beta60.iloc[-1]:.2f}")
-        st.line_chart(pd.DataFrame({"60d Vol": vol60, "60d Beta": beta60}))
+        c1.metric("Max Drawdown", f"{dd:.2%}" if not np.isnan(dd) else "N/A")
+        c2.metric("Current 60d Vol", f"{vol60.iloc[-1]:.2%}" if len(vol60) else "N/A")
+        c3.metric("Current 60d Beta vs SPY", f"{beta60.iloc[-1]:.2f}" if len(beta60) else "N/A")
+        if len(vol60) and len(beta60):
+            st.line_chart(pd.DataFrame({"60d Vol": vol60, "60d Beta": beta60}))
     except Exception:
         st.info("Select at least one ticker for risk metrics.")
 
     # Sector snapshot
     st.markdown("### Sector Snapshot (SPDR ETFs)")
-    sector_map = {"SPY":"SPY","XLK":"Tech","XLF":"Fin","XLE":"Energy","XLY":"Disc","XLV":"Health","XLP":"Staples"}
+    sector_map = {"SPY":"S&P 500","XLK":"Tech","XLF":"Financials","XLE":"Energy","XLY":"Consumer Discretionary","XLV":"Health Care","XLP":"Consumer Staples"}
     sec_df = load_prices(list(sector_map.keys()), period="6mo")
     if not sec_df.empty:
         perf = (sec_df.iloc[-1] / sec_df.iloc[0] - 1).sort_values(ascending=False)
+        perf.index = [sector_map.get(k, k) for k in perf.index]
         fig = px.bar(perf * 100, labels={"value": "Return (%)", "index": "Sector"}, height=380)
         st.plotly_chart(fig, use_container_width=True)
-
     with st.expander("Methodology"):
         st.markdown("""
-- Prices: Yahoo Finance (adjusted close)
-- Rolling metrics: 60-day window, annualized
-- Beta: covariance(asset, SPY) / variance(SPY)
-- Drawdown: min(Price/CumMax - 1)
-- Sectors: SPDR ETF family
+        - **Prices:** Yahoo Finance (adjusted close)
+        - **Rolling metrics:** 60-day window, annualized volatility
+        - **Beta:** covariance(asset, SPY) / variance(SPY)
+        - **Drawdown:** min(Price/CumMax - 1)
+        - **Sectors:** SPDR ETF family
         """)
 
 # ---------------------- PORTFOLIO OPTIMIZER ----------------------
 elif page == "Portfolio Optimizer":
     st.markdown("## Modern Portfolio Theory Optimizer")
+
     raw_u = st.text_input("Tickers", "AAPL, MSFT, NVDA, AMZN, JPM, XOM")
     period = st.selectbox("History period", ["1y", "2y", "3y", "5y"], 2)
-    rf = st.number_input("Risk-free rate", 0.02, step=0.005)
-    lb = st.number_input("Lower bound", 0.0, 0.0, 1.0, 0.05)
-    ub = st.number_input("Upper bound", 1.0, 0.0, 1.0, 0.05)
+
+    # Risk-free input with sensible bounds and format
+    rf = st.number_input("Risk-free rate (annualized, e.g., 0.02 = 2%)",
+                         min_value=0.0, max_value=0.10, value=0.02, step=0.005, format="%.3f")
+
+    # Allocation bounds: ensure lb <= ub and both in [0,1]
+    lb = st.number_input("Lower bound per asset weight", min_value=0.0, max_value=1.0, value=0.0, step=0.05)
+    ub = st.number_input("Upper bound per asset weight", min_value=lb, max_value=1.0, value=1.0, step=0.05)
+
     run = st.button("Run Optimization")
 
     if run:
         tickers = [t.strip().upper() for t in raw_u.split(",") if t.strip()]
         prices = load_prices(tickers, period=period)
-        rets = to_returns(prices)
-        mu, cov = annualize_stats(rets)
-        bounds = tuple((lb, ub) for _ in tickers)
-        w_minv = solve_min_variance(mu, cov, bounds)
-        w_msr = solve_max_sharpe(mu, cov, bounds, rf)
-        ef_ret, ef_vol = efficient_frontier(mu, cov, bounds)
+        if prices.empty:
+            st.error("No price data available. Check tickers and period.")
+        else:
+            rets = to_returns(prices)
+            if rets.empty:
+                st.error("Insufficient returns data to compute statistics.")
+            else:
+                mu, cov = annualize_stats(rets)
+                n = len(tickers)
+                bounds = tuple((lb, ub) for _ in range(n))
 
-        r_m, v_m, s_m = portfolio_perf(w_msr, mu, cov, rf)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=ef_vol, y=ef_ret, mode="lines", name="Frontier"))
-        fig.add_trace(go.Scatter(x=[v_m], y=[r_m], mode="markers", name="Max Sharpe", marker=dict(size=10)))
-        fig.update_layout(xaxis_title="Volatility", yaxis_title="Return")
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(pd.DataFrame({"Ticker":tickers,"MinVar":np.round(w_minv,4),"MaxSharpe":np.round(w_msr,4)}).set_index("Ticker"))
+                try:
+                    w_minv = solve_min_variance(mu, cov, bounds)
+                    w_msr = solve_max_sharpe(mu, cov, bounds, rf)
+                    ef_ret, ef_vol = efficient_frontier(mu, cov, bounds)
+                    r_m, v_m, s_m = portfolio_perf(w_msr, mu, cov, rf)
+
+                    fig = go.Figure()
+                    if len(ef_vol) and len(ef_ret):
+                        fig.add_trace(go.Scatter(x=ef_vol, y=ef_ret, mode="lines", name="Frontier"))
+                    fig.add_trace(go.Scatter(x=[v_m], y=[r_m], mode="markers", name=f"Max Sharpe (S={s_m:.2f})", marker=dict(size=10)))
+                    fig.update_layout(xaxis_title="Volatility (σ)", yaxis_title="Return (μ)")
+                    st.plotly_chart(fig, use_container_width=True)
+
+                    st.dataframe(
+                        pd.DataFrame({"Ticker": tickers,
+                                      "MinVar": np.round(w_minv, 4),
+                                      "MaxSharpe": np.round(w_msr, 4)}).set_index("Ticker")
+                    )
+                except Exception as e:
+                    st.error(f"Optimization failed: {e}")
 
 # ---------------------- NEWS ----------------------
 elif page == "News":
@@ -274,26 +326,35 @@ elif page == "News":
     }
     src = st.selectbox("Source", list(feeds.keys()))
     q = st.text_input("Keyword filter", "")
-    f = feedparser.parse(feeds[src])
-    for e in f.entries[:15]:
-        title = e.get("title","")
-        summ = e.get("summary","")
-        link = e.get("link","#")
-        blob = (title + " " + summ).lower()
-        if q and q.lower() not in blob:
-            continue
-        st.markdown(f"**[{title}]({link})**")
-        st.caption(e.get("published",""))
-        st.write(summ[:300] + ("..." if len(summ)>300 else ""))
-        st.markdown("---")
+    try:
+        f = feedparser.parse(feeds[src])
+        count = 0
+        for e in f.entries:
+            if count >= 15:
+                break
+            title = e.get("title","")
+            summ = e.get("summary","")
+            link = e.get("link","#")
+            blob = (title + " " + summ).lower()
+            if q and q.lower() not in blob:
+                continue
+            st.markdown(f"**[{title}]({link})**")
+            st.caption(e.get("published",""))
+            st.write(summ[:300] + ("..." if len(summ)>300 else ""))
+            st.markdown("---")
+            count += 1
+        if count == 0:
+            st.info("No articles matched the filter.")
+    except Exception:
+        st.error("Failed to load the news feed. Try another source.")
 
 # ---------------------- ABOUT ----------------------
 elif page == "About":
     st.markdown("## About PSP Finance")
     st.write("""
-This is a finance research and learning platform built to impress even the most detail-oriented professors.
-It replicates Bloomberg-style dashboards and MPT analytics.
-- **Dashboard:** multi-ticker, sectors, rolling risk, watchlist.
-- **Optimizer:** mean-variance with efficient frontier.
-- **News:** real-time feeds for global financial updates.
-""")
+    This is a finance research and learning platform built to impress even the most detail-oriented professors.
+    It replicates Bloomberg-style dashboards and MPT analytics.
+    - **Dashboard:** multi-ticker, sectors, rolling risk, watchlist.
+    - **Optimizer:** mean-variance with efficient frontier.
+    - **News:** real-time feeds for global financial updates.
+    """)
