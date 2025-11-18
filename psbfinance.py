@@ -19,7 +19,7 @@ st.title("PSP Finance Intelligence Terminal")
 st.subheader("Where future analysts discover financial truths")
 
 st.markdown("""
-PSP Finance is a student-built platform that unifies real-time market data, multi-year financials, comparisons, and global news in one dashboard.
+PSP Finance is a  platform that unifies real-time market data, multi-year financials, comparisons, and global news in one dashboard.
 It is designed for clarity, speed, and practical insight—helping students and analysts focus on decisions, not data hunting.
 """)
 
