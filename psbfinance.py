@@ -1,5 +1,5 @@
 # pspfinance.py
-# PSP Finance Intelligence Terminal — professional build
+# PSP Finance Intelligence Terminal — fast, professional, complete
 
 import streamlit as st
 import pandas as pd
@@ -9,33 +9,12 @@ import plotly.graph_objects as go
 import requests
 from bs4 import BeautifulSoup
 
-# --------------------------
-# Configuration and constants
-# --------------------------
 st.set_page_config(page_title="PSP Finance", layout="wide")
 
-# Replace with your real Alpha Vantage key
 ALPHA_KEY = "79T4YLBTP8L9E9FK"
 
 # --------------------------
-# Homepage copy
-# --------------------------
-st.title("PSP Finance Intelligence Terminal")
-st.subheader("Where analysts turn data into decisions")
-
-st.markdown("""
-PSP Finance is a professional-grade dashboard for real-time market intelligence, multi-year fundamentals, valuation analytics, peer comparisons, regulatory filings, and curated news.
-It is built for clarity, speed, and practical insight—so you can analyze companies, markets, and trends in one place.
-""")
-
-section = st.sidebar.radio(
-    "Navigate",
-    ["Home", "Company Search", "AI Comparison", "SEC Filings", "News Feed", "Global Markets", "Portfolio"],
-    key="nav_radio"
-)
-
-# --------------------------
-# Utilities and fallbacks
+# Utilities and performance
 # --------------------------
 def fmt_big(x):
     if x is None or (isinstance(x, float) and pd.isna(x)):
@@ -44,12 +23,9 @@ def fmt_big(x):
         x = float(x)
     except Exception:
         return "–"
-    if abs(x) >= 1e12:
-        return f"{x/1e12:.2f}T"
-    if abs(x) >= 1e9:
-        return f"{x/1e9:.2f}B"
-    if abs(x) >= 1e6:
-        return f"{x/1e6:.2f}M"
+    if abs(x) >= 1e12: return f"{x/1e12:.2f}T"
+    if abs(x) >= 1e9:  return f"{x/1e9:.2f}B"
+    if abs(x) >= 1e6:  return f"{x/1e6:.2f}M"
     return f"{x:.0f}"
 
 def pct(x):
@@ -66,267 +42,331 @@ def safe_info(tk: yf.Ticker):
         return {}
 
 @st.cache_data(show_spinner=False)
-def load_price_history_yf(ticker: str, period="1y", interval="1d"):
+def yf_prices(symbol: str, period="1y", interval="1d"):
     try:
-        df = yf.download(ticker, period=period, interval=interval, progress=False, threads=False)
+        df = yf.download(symbol, period=period, interval=interval, progress=False, threads=False)
         if isinstance(df, pd.DataFrame) and not df.empty:
             df = df.reset_index()
         return df
     except Exception:
         return pd.DataFrame()
 
-def alpha_overview(symbol: str) -> dict:
-    url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={symbol}&apikey={ALPHA_KEY}"
+def alpha_json(url):
     try:
         r = requests.get(url, timeout=10)
         if r.status_code == 200:
-            data = r.json()
-            return data if data.get("Name") else {}
+            return r.json()
     except Exception:
         pass
     return {}
 
-def alpha_daily(symbol: str) -> pd.DataFrame:
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}"
-    try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            js = r.json()
-            ts = js.get("Time Series (Daily)", {})
-            if ts:
-                df = pd.DataFrame.from_dict(ts, orient="index")
-                df.index = pd.to_datetime(df.index)
-                df = df.rename(columns={
-                    "1. open": "Open", "2. high": "High", "3. low": "Low",
-                    "4. close": "Close", "5. volume": "Volume"
-                }).sort_index()
-                df = df.reset_index().rename(columns={"index": "Date"})
-                for col in ["Open","High","Low","Close","Volume"]:
-                    df[col] = pd.to_numeric(df[col], errors="coerce")
-                return df
-    except Exception:
-        pass
-    return pd.DataFrame()
+@st.cache_data(show_spinner=False)
+def alpha_overview(symbol: str) -> dict:
+    url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={symbol}&apikey={ALPHA_KEY}"
+    data = alpha_json(url)
+    return data if data.get("Name") else {}
 
-def get_prices_with_fallback(symbol: str, period="1y", interval="1d"):
-    df = load_price_history_yf(symbol, period=period, interval=interval)
+@st.cache_data(show_spinner=False)
+def alpha_timeseries_daily(symbol: str) -> pd.DataFrame:
+    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={ALPHA_KEY}"
+    js = alpha_json(url)
+    ts = js.get("Time Series (Daily)", {})
+    if not ts: return pd.DataFrame()
+    df = pd.DataFrame.from_dict(ts, orient="index")
+    df.index = pd.to_datetime(df.index)
+    df = df.rename(columns={
+        "1. open": "Open", "2. high": "High", "3. low": "Low",
+        "4. close": "Close", "5. volume": "Volume"
+    }).sort_index()
+    df = df.reset_index().rename(columns={"index": "Date"})
+    for col in ["Open","High","Low","Close","Volume"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
+
+@st.cache_data(show_spinner=False)
+def alpha_income(symbol: str) -> pd.DataFrame:
+    url = f"https://www.alphavantage.co/query?function=INCOME_STATEMENT&symbol={symbol}&apikey={ALPHA_KEY}"
+    js = alpha_json(url)
+    df = pd.DataFrame(js.get("annualReports", []))
+    return df
+
+@st.cache_data(show_spinner=False)
+def alpha_balance(symbol: str) -> pd.DataFrame:
+    url = f"https://www.alphavantage.co/query?function=BALANCE_SHEET&symbol={symbol}&apikey={ALPHA_KEY}"
+    js = alpha_json(url)
+    df = pd.DataFrame(js.get("annualReports", []))
+    return df
+
+@st.cache_data(show_spinner=False)
+def alpha_cashflow(symbol: str) -> pd.DataFrame:
+    url = f"https://www.alphavantage.co/query?function=CASH_FLOW&symbol={symbol}&apikey={ALPHA_KEY}"
+    js = alpha_json(url)
+    df = pd.DataFrame(js.get("annualReports", []))
+    return df
+
+def get_prices(symbol: str, period="1y", interval="1d"):
+    df = yf_prices(symbol, period=period, interval=interval)
     if df.empty or "Close" not in df.columns:
-        df = alpha_daily(symbol)
+        df = alpha_timeseries_daily(symbol)
     return df
 
 # --------------------------
-# Home section
+# Homepage
 # --------------------------
+st.title("PSP Finance Intelligence Terminal")
+st.subheader("Where analysts turn data into decisions")
+st.markdown("""
+A professional-grade dashboard for market intelligence, multi-year fundamentals, valuation analytics, peer comparisons, regulatory filings, and curated news.
+Built for clarity, speed, and practical insight—analyze companies, markets, and trends in one place.
+""")
+
+section = st.sidebar.radio("Navigate", [
+    "Home", "Company Search", "AI Comparison", "SEC Filings", "News Feed", "Global Markets", "Portfolio"
+], key="nav")
+
 if section == "Home":
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("### Quick start")
-        st.write("- Use Company Search for fundamentals and charts")
-        st.write("- Add peers in AI Comparison for side-by-side analysis")
-        st.write("- Review filings in SEC Filings; track news via News Feed")
+        st.write("- Company Search for fundamentals and charts")
+        st.write("- AI Comparison for side-by-side metrics")
+        st.write("- SEC Filings viewer for core documents")
     with col2:
-        st.markdown("### Why it helps")
-        st.write("- Multi-year statements with export")
-        st.write("- Clear valuation and profitability decomposition")
-        st.write("- Concise analyst-style summaries")
+        st.markdown("### Capabilities")
+        st.write("- Up to 10–15 years of statements via Alpha Vantage")
+        st.write("- Valuation, profitability, liquidity, growth ratios")
+        st.write("- Embedded SEC document pages")
     with col3:
-        st.markdown("### Roadmap")
-        st.write("- Options implied volatility and skew")
-        st.write("- Corporate bonds and CDS spreads")
-        st.write("- Macro rates and alerts")
+        st.markdown("### Stability")
+        st.write("- Caching to avoid re-fetching")
+        st.write("- Timeouts to prevent long blocking")
+        st.write("- Fallbacks across sources")
 
 # --------------------------
-# Company Search section
+# Company Search
 # --------------------------
 if section == "Company Search":
     st.header("Company search and detailed analysis")
+    ticker = st.text_input("Enter ticker (e.g., AAPL, MSFT, AIR.PA)", key="tkr").strip().upper()
+    years_requested = st.slider("Years of history", min_value=5, max_value=15, value=10, step=1, key="yrs")
 
-    query = st.text_input(
-        "Enter a ticker or name (e.g., AAPL, MSFT, AIR.PA):",
-        key="company_search_input"
-    ).strip().upper()
-
-    tabs = st.tabs(["Overview", "Financials", "Valuation and profitability", "Peers", "Summary"])
-
-    if query:
-        # Primary: Yahoo Finance
-        stock = yf.Ticker(query)
-        info = safe_info(stock)
-
-        # Fallback: Alpha Vantage Overview
+    tabs = st.tabs(["Overview", "Financials", "Ratios", "Peers", "Summary"])
+    if ticker:
+        # Overview: try yfinance, fallback to Alpha overview
+        yft = yf.Ticker(ticker)
+        info = safe_info(yft)
         if not info or "longName" not in info:
-            ov = alpha_overview(query)
-            if ov:
-                info = {
-                    "longName": ov.get("Name", query),
-                    "sector": ov.get("Sector"),
-                    "industry": ov.get("Industry"),
-                    "marketCap": float(ov.get("MarketCapitalization")) if ov.get("MarketCapitalization") else None,
-                    "beta": ov.get("Beta"),
-                    "trailingPE": float(ov.get("PERatio")) if ov.get("PERatio") else None,
-                    "priceToSalesTrailing12Months": float(ov.get("PriceToSalesRatioTTM")) if ov.get("PriceToSalesRatioTTM") else None,
-                    "enterpriseToEbitda": float(ov.get("EVToEBITDA")) if ov.get("EVToEBITDA") else None,
-                    "returnOnEquity": float(ov.get("ReturnOnEquityTTM")) if ov.get("ReturnOnEquityTTM") else None,
-                    "dividendYield": float(ov.get("DividendYield")) if ov.get("DividendYield") else None,
-                    "description": ov.get("Description")
-                }
-            else:
-                info = info  # keep whatever exists (even empty)
+            ov = alpha_overview(ticker)
+            info = {
+                "longName": ov.get("Name", ticker),
+                "sector": ov.get("Sector"),
+                "industry": ov.get("Industry"),
+                "marketCap": float(ov.get("MarketCapitalization")) if ov.get("MarketCapitalization") else None,
+                "beta": ov.get("Beta"),
+                "trailingPE": float(ov.get("PERatio")) if ov.get("PERatio") else None,
+                "priceToSalesTrailing12Months": float(ov.get("PriceToSalesRatioTTM")) if ov.get("PriceToSalesRatioTTM") else None,
+                "enterpriseToEbitda": float(ov.get("EVToEBITDA")) if ov.get("EVToEBITDA") else None,
+                "returnOnEquity": float(ov.get("ReturnOnEquityTTM")) if ov.get("ReturnOnEquityTTM") else None,
+                "dividendYield": float(ov.get("DividendYield")) if ov.get("DividendYield") else None,
+                "description": ov.get("Description")
+            }
 
-        # --------------------------
         # Overview tab
-        # --------------------------
         with tabs[0]:
-            st.subheader(f"Overview — {info.get('longName', query)} ({query})")
-
-            overview_cols = st.columns(4)
-            with overview_cols[0]:
+            st.subheader(f"Overview — {info.get('longName', ticker)} ({ticker})")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
                 st.write(f"Sector: {info.get('sector', '–')}")
                 st.write(f"Industry: {info.get('industry', '–')}")
                 st.write(f"Description: {info.get('description', '–')}")
-            with overview_cols[1]:
+            with c2:
                 st.write(f"Market capitalization: {fmt_big(info.get('marketCap'))}")
-                st.write(f"Shares outstanding: {fmt_big(info.get('sharesOutstanding'))}")
                 st.write(f"Beta: {info.get('beta', '–')}")
-            with overview_cols[2]:
+            with c3:
                 st.write(f"Trailing P/E: {info.get('trailingPE', '–')}")
                 st.write(f"Price/Sales (TTM): {info.get('priceToSalesTrailing12Months', '–')}")
                 st.write(f"EV/EBITDA: {info.get('enterpriseToEbitda', '–')}")
-            with overview_cols[3]:
+            with c4:
                 st.write(f"Dividend yield: {pct(info.get('dividendYield'))}")
-                st.write(f"52-week high: {info.get('fiftyTwoWeekHigh', '–')}")
-                st.write(f"52-week low: {info.get('fiftyTwoWeekLow', '–')}")
 
             st.markdown("#### Price performance")
-            period = st.selectbox("Period", ["1mo", "3mo", "6mo", "1y", "2y", "5y"], index=3, key="price_period")
-            interval = st.selectbox("Interval", ["1d", "1wk"], index=0, key="price_interval")
-            prices = get_prices_with_fallback(query, period=period, interval=interval)
+            period = st.selectbox("Period", ["1mo","3mo","6mo","1y","2y","5y"], index=3, key="pp")
+            interval = st.selectbox("Interval", ["1d","1wk"], index=0, key="pi")
+            prices = get_prices(ticker, period=period, interval=interval)
             if prices.empty or "Close" not in prices.columns:
-                st.warning("Price data unavailable from both sources.")
+                st.warning("Price data unavailable.")
             else:
-                fig_price = px.line(prices, x="Date", y="Close", title=f"{query} closing price ({period})")
-                st.plotly_chart(fig_price, use_container_width=True)
+                fig = px.line(prices, x="Date", y="Close", title=f"{ticker} closing price ({period})")
+                st.plotly_chart(fig, use_container_width=True)
 
-        # --------------------------
-        # Financials tab
-        # --------------------------
+        # Financials tab (10–15 years via Alpha Vantage; Yahoo limited)
         with tabs[1]:
             st.subheader("Financial statements (annual)")
-            fin_cols = st.columns(3)
+            st.caption("Select years above to limit history and improve performance.")
+            inc_av = alpha_income(ticker)
+            bal_av = alpha_balance(ticker)
+            cf_av  = alpha_cashflow(ticker)
 
-            # Income statement
-            with fin_cols[0]:
+            def limit_years(df, date_col="fiscalDateEnding", n=10):
+                if df.empty: return df
+                df = df.copy()
+                if date_col in df.columns:
+                    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+                    df = df.sort_values(date_col, ascending=False).head(n)
+                return df
+
+            inc = limit_years(inc_av, n=years_requested)
+            bal = limit_years(bal_av, n=years_requested)
+            cf  = limit_years(cf_av,  n=years_requested)
+
+            colA, colB, colC = st.columns(3)
+            with colA:
                 st.markdown("Income statement")
-                inc = stock.financials if isinstance(stock.financials, pd.DataFrame) else pd.DataFrame()
                 if inc.empty:
-                    st.info("Income statement unavailable via Yahoo Finance.")
+                    st.info("Unavailable from Alpha Vantage.")
                 else:
                     st.dataframe(inc)
-                    st.download_button("Download income (CSV)", inc.to_csv().encode(), "income_statement.csv", key="dl_income")
-
-            # Balance sheet
-            with fin_cols[1]:
+                    st.download_button("Download income (CSV)", inc.to_csv(index=False).encode(), "income_statement.csv", key="dl_inc")
+            with colB:
                 st.markdown("Balance sheet")
-                bal = stock.balance_sheet if isinstance(stock.balance_sheet, pd.DataFrame) else pd.DataFrame()
                 if bal.empty:
-                    st.info("Balance sheet unavailable via Yahoo Finance.")
+                    st.info("Unavailable from Alpha Vantage.")
                 else:
                     st.dataframe(bal)
-                    st.download_button("Download balance (CSV)", bal.to_csv().encode(), "balance_sheet.csv", key="dl_balance")
-
-            # Cash flow
-            with fin_cols[2]:
+                    st.download_button("Download balance (CSV)", bal.to_csv(index=False).encode(), "balance_sheet.csv", key="dl_bal")
+            with colC:
                 st.markdown("Cash flow statement")
-                cf = stock.cashflow if isinstance(stock.cashflow, pd.DataFrame) else pd.DataFrame()
                 if cf.empty:
-                    st.info("Cash flow statement unavailable via Yahoo Finance.")
+                    st.info("Unavailable from Alpha Vantage.")
                 else:
                     st.dataframe(cf)
-                    st.download_button("Download cash flow (CSV)", cf.to_csv().encode(), "cash_flow.csv", key="dl_cashflow")
+                    st.download_button("Download cash flow (CSV)", cf.to_csv(index=False).encode(), "cash_flow.csv", key="dl_cf")
 
-            st.markdown("#### Growth trends (revenue and earnings)")
-            earn = stock.earnings if isinstance(stock.earnings, pd.DataFrame) else pd.DataFrame()
-            if not earn.empty and set(["Revenue", "Earnings"]).issubset(earn.columns):
-                fig_growth = go.Figure()
-                fig_growth.add_trace(go.Bar(x=earn.index.astype(str), y=earn["Revenue"], name="Revenue"))
-                fig_growth.add_trace(go.Bar(x=earn.index.astype(str), y=earn["Earnings"], name="Earnings"))
-                fig_growth.update_layout(barmode="group", title="Revenue and earnings (annual)")
-                st.plotly_chart(fig_growth, use_container_width=True)
-            else:
-                st.info("Revenue/Earnings series unavailable from Yahoo Finance.")
+            st.markdown("#### Growth trends")
+            if not inc.empty and "totalRevenue" in inc.columns and "fiscalDateEnding" in inc.columns:
+                gdf = inc[["fiscalDateEnding", "totalRevenue"]].dropna()
+                gdf = gdf.sort_values("fiscalDateEnding")
+                fig_g = px.bar(gdf, x="fiscalDateEnding", y="totalRevenue", title="Total revenue (annual)")
+                st.plotly_chart(fig_g, use_container_width=True)
+            if not inc.empty and "netIncome" in inc.columns and "fiscalDateEnding" in inc.columns:
+                ndf = inc[["fiscalDateEnding", "netIncome"]].dropna()
+                ndf = ndf.sort_values("fiscalDateEnding")
+                fig_n = px.bar(ndf, x="fiscalDateEnding", y="netIncome", title="Net income (annual)")
+                st.plotly_chart(fig_n, use_container_width=True)
 
-        # --------------------------
-        # Valuation and profitability tab
-        # --------------------------
+        # Ratios tab: valuation, profitability, liquidity, growth
         with tabs[2]:
-            st.subheader("Valuation and profitability decomposition")
+            st.subheader("Ratios and decomposition")
+            # Build ratios from Alpha statements when possible
+            def safe_num(x):
+                try: return float(x)
+                except: return None
 
-            pe = info.get("trailingPE", None)
-            ps = info.get("priceToSalesTrailing12Months", None)
-            ev_ebitda = info.get("enterpriseToEbitda", None)
-            profit_margin = info.get("profitMargins", None)
-            op_margin = info.get("operatingMargins", None)
-            roe = info.get("returnOnEquity", None)
-            roa = info.get("returnOnAssets", None)
-            fcf = info.get("freeCashflow", None)
+            # Pick latest row for single-period ratios
+            latest_inc = inc.head(1).iloc[0] if not inc.empty else pd.Series()
+            latest_bal = bal.head(1).iloc[0] if not bal.empty else pd.Series()
+            latest_cf  = cf.head(1).iloc[0]  if not cf.empty  else pd.Series()
 
-            colA, colB = st.columns([2, 1])
-            with colA:
-                val_df = pd.DataFrame({
-                    "Metric": ["P/E", "Price/Sales (TTM)", "EV/EBITDA"],
-                    "Value": [pe, ps, ev_ebitda]
-                }).dropna()
-                if val_df.empty:
-                    st.info("Valuation metrics unavailable from current sources.")
-                else:
-                    fig_val = px.bar(val_df, x="Metric", y="Value", title="Valuation metrics")
-                    st.plotly_chart(fig_val, use_container_width=True)
+            revenue = safe_num(latest_inc.get("totalRevenue"))
+            net_income = safe_num(latest_inc.get("netIncome"))
+            ebitda = safe_num(latest_inc.get("ebitda"))
+            shares = safe_num(latest_bal.get("commonStockSharesOutstanding"))
+            total_assets = safe_num(latest_bal.get("totalAssets"))
+            total_equity = safe_num(latest_bal.get("totalShareholderEquity"))
+            current_assets = safe_num(latest_bal.get("totalCurrentAssets"))
+            current_liabilities = safe_num(latest_bal.get("totalCurrentLiabilities"))
+            cash = safe_num(latest_bal.get("cashAndCashEquivalentsAtCarryingValue"))
+            op_cashflow = safe_num(latest_cf.get("operatingCashflow"))
+            capex = safe_num(latest_cf.get("capitalExpenditures"))
 
-                prof_df = pd.DataFrame({
-                    "Metric": ["Profit margin", "Operating margin", "Return on equity", "Return on assets"],
-                    "Value": [profit_margin, op_margin, roe, roa]
-                }).dropna()
-                if prof_df.empty:
-                    st.info("Profitability metrics unavailable from current sources.")
-                else:
-                    prof_df["Value_pct"] = prof_df["Value"] * 100
-                    fig_prof = px.bar(prof_df, x="Metric", y="Value_pct", title="Profitability (%)")
-                    fig_prof.update_yaxes(title="Percent")
-                    st.plotly_chart(fig_prof, use_container_width=True)
+            market_cap = info.get("marketCap")
+            pe = info.get("trailingPE")
+            ps = info.get("priceToSalesTrailing12Months")
+            ev_ebitda = info.get("enterpriseToEbitda")
 
-            with colB:
-                st.markdown("Key facts")
-                st.write(f"Market capitalization: {fmt_big(info.get('marketCap'))}")
+            # Profitability
+            profit_margin = (net_income / revenue) if (net_income and revenue) else None
+            roe = (net_income / total_equity) if (net_income and total_equity) else None
+            roa = (net_income / total_assets) if (net_income and total_assets) else None
+            op_margin = None  # if Alpha inc_op_income present: operatingIncome / totalRevenue
+
+            # Liquidity
+            current_ratio = (current_assets / current_liabilities) if (current_assets and current_liabilities) else None
+            quick_ratio = None  # would require inventory field; Alpha has inventory in balance sheet sometimes
+            cash_ratio = (cash / current_liabilities) if (cash and current_liabilities) else None
+
+            # Growth (YoY using last two rows if available)
+            def yoy(series_name, df):
+                if df.empty or series_name not in df.columns: return None
+                s = df[[series_name, "fiscalDateEnding"]].dropna().sort_values("fiscalDateEnding")
+                if len(s) < 2: return None
+                a, b = safe_num(s.iloc[-2][series_name]), safe_num(s.iloc[-1][series_name])
+                if a is None or a == 0 or b is None: return None
+                return (b - a) / abs(a)
+
+            revenue_yoy = yoy("totalRevenue", inc)
+            net_income_yoy = yoy("netIncome", inc)
+            op_cf_yoy = yoy("operatingCashflow", cf)
+
+            # Valuation plot
+            val_df = pd.DataFrame({
+                "Metric": ["P/E", "Price/Sales (TTM)", "EV/EBITDA"],
+                "Value": [pe, ps, ev_ebitda]
+            }).dropna()
+            if val_df.empty:
+                st.info("Valuation metrics unavailable from current sources.")
+            else:
+                st.plotly_chart(px.bar(val_df, x="Metric", y="Value", title="Valuation metrics"), use_container_width=True)
+
+            # Profitability plot
+            prof_df = pd.DataFrame({
+                "Metric": ["Profit margin", "Return on equity", "Return on assets"],
+                "Value": [profit_margin, roe, roa]
+            }).dropna()
+            if not prof_df.empty:
+                prof_df["Value_pct"] = prof_df["Value"] * 100
+                fig_prof = px.bar(prof_df, x="Metric", y="Value_pct", title="Profitability (%)")
+                fig_prof.update_yaxes(title="Percent")
+                st.plotly_chart(fig_prof, use_container_width=True)
+
+            # Liquidity plot
+            liq_df = pd.DataFrame({
+                "Metric": ["Current ratio", "Cash ratio"],
+                "Value": [current_ratio, cash_ratio]
+            }).dropna()
+            if not liq_df.empty:
+                st.plotly_chart(px.bar(liq_df, x="Metric", y="Value", title="Liquidity"), use_container_width=True)
+
+            # Growth plot
+            growth_df = pd.DataFrame({
+                "Metric": ["Revenue YoY", "Net income YoY", "Operating cash flow YoY"],
+                "Value": [revenue_yoy, net_income_yoy, op_cf_yoy]
+            }).dropna()
+            if not growth_df.empty:
+                growth_df["Value_pct"] = growth_df["Value"] * 100
+                fig_g = px.bar(growth_df, x="Metric", y="Value_pct", title="Growth (%)")
+                fig_g.update_yaxes(title="Percent")
+                st.plotly_chart(fig_g, use_container_width=True)
+
+            st.markdown("Key facts")
+            st.write(f"Market capitalization: {fmt_big(market_cap)}")
+            st.write(f"P/E: {pe if pe is not None else '–'}")
+            st.write(f"Price/Sales (TTM): {ps if ps is not None else '–'}")
+            st.write(f"EV/EBITDA: {ev_ebitda if ev_ebitda is not None else '–'}")
+            if op_cashflow is not None and capex is not None:
+                fcf = op_cashflow - abs(capex)
                 st.write(f"Free cash flow: {fmt_big(fcf)}")
-                st.write(f"Dividend yield: {pct(info.get('dividendYield'))}")
-                st.write(f"Beta: {info.get('beta', '–')}")
 
-            # Simple risk label
-            risk_label = "Low"
-            if pe is None or info.get("marketCap", 0) == 0:
-                risk_label = "Unknown"
-            elif isinstance(pe, (int, float)) and pe > 30:
-                risk_label = "High"
-            elif isinstance(pe, (int, float)) and pe > 15:
-                risk_label = "Moderate"
-            st.write(f"Risk score: {risk_label}")
-
-        # --------------------------
         # Peers tab
-        # --------------------------
         with tabs[3]:
             st.subheader("Peer comparison")
-            peer_input = st.text_input(
-                "Enter peer tickers (comma-separated), e.g., MSFT, GOOG, AMZN",
-                key="peer_input"
-            )
+            peer_input = st.text_input("Enter peer tickers (comma-separated)", key="peers")
             peers = [p.strip().upper() for p in peer_input.split(",") if p.strip()]
             rows = []
             for tk in peers:
                 try:
                     p = yf.Ticker(tk)
                     pi = safe_info(p)
-                    # Fallback to Alpha if empty
                     if not pi or "longName" not in pi:
                         pov = alpha_overview(tk)
                         pi = {
@@ -336,11 +376,7 @@ if section == "Company Search":
                             "marketCap": float(pov.get("MarketCapitalization")) if pov.get("MarketCapitalization") else None,
                             "trailingPE": float(pov.get("PERatio")) if pov.get("PERatio") else None,
                             "priceToSalesTrailing12Months": float(pov.get("PriceToSalesRatioTTM")) if pov.get("PriceToSalesRatioTTM") else None,
-                            "enterpriseToEbitda": float(pov.get("EVToEBITDA")) if pov.get("EVToEBITDA") else None,
-                            "profitMargins": None,
-                            "operatingMargins": None,
-                            "returnOnEquity": float(pov.get("ReturnOnEquityTTM")) if pov.get("ReturnOnEquityTTM") else None,
-                            "returnOnAssets": None
+                            "enterpriseToEbitda": float(pov.get("EVToEBITDA")) if pov.get("EVToEBITDA") else None
                         }
                     rows.append({
                         "Ticker": tk,
@@ -350,11 +386,7 @@ if section == "Company Search":
                         "MarketCap": pi.get("marketCap", None),
                         "P/E": pi.get("trailingPE", None),
                         "Price/Sales": pi.get("priceToSalesTrailing12Months", None),
-                        "EV/EBITDA": pi.get("enterpriseToEbitda", None),
-                        "ProfitMargin": pi.get("profitMargins", None),
-                        "OperatingMargin": pi.get("operatingMargins", None),
-                        "ROE": pi.get("returnOnEquity", None),
-                        "ROA": pi.get("returnOnAssets", None)
+                        "EV/EBITDA": pi.get("enterpriseToEbitda", None)
                     })
                 except Exception:
                     pass
@@ -363,37 +395,22 @@ if section == "Company Search":
                 st.info("Add peer tickers to see comparisons.")
             else:
                 st.dataframe(peer_df)
+                for col in ["MarketCap", "P/E", "Price/Sales", "EV/EBITDA"]:
+                    sub = peer_df[["Ticker", col]].dropna()
+                    if not sub.empty:
+                        st.plotly_chart(px.bar(sub, x="Ticker", y=col, title=f"{col} comparison"), use_container_width=True)
 
-                cap_df = peer_df[["Ticker", "MarketCap"]].dropna()
-                if not cap_df.empty:
-                    fig_cap = px.bar(cap_df, x="Ticker", y="MarketCap", title="Market capitalization comparison")
-                    st.plotly_chart(fig_cap, use_container_width=True)
-
-                pe_df = peer_df[["Ticker", "P/E"]].dropna()
-                if not pe_df.empty:
-                    fig_pe = px.bar(pe_df, x="Ticker", y="P/E", title="P/E comparison")
-                    st.plotly_chart(fig_pe, use_container_width=True)
-
-                pm_df = peer_df[["Ticker", "ProfitMargin"]].dropna()
-                if not pm_df.empty:
-                    pm_df["ProfitMargin_pct"] = pm_df["ProfitMargin"] * 100
-                    fig_pm = px.bar(pm_df, x="Ticker", y="ProfitMargin_pct", title="Profit margin (%)")
-                    fig_pm.update_yaxes(title="Percent")
-                    st.plotly_chart(fig_pm, use_container_width=True)
-
-        # --------------------------
-        # Summary tab (7 sentences)
-        # --------------------------
+        # Summary tab
         with tabs[4]:
             st.subheader("Analyst-style summary")
             lines = []
-            lines.append(f"{info.get('longName', query)} operates in {info.get('sector', '–')} with a focus on {info.get('industry', '–')}.")
-            lines.append(f"Market capitalization is {fmt_big(info.get('marketCap'))}; core valuation metrics include P/E={info.get('trailingPE', '–')}, Price/Sales={info.get('priceToSalesTrailing12Months', '–')}, and EV/EBITDA={info.get('enterpriseToEbitda', '–')}.")
-            lines.append(f"Profitability indicates profit margin {pct(info.get('profitMargins'))} and operating margin {pct(info.get('operatingMargins'))}.")
-            lines.append(f"Returns on capital include return on equity {pct(info.get('returnOnEquity'))} and return on assets {pct(info.get('returnOnAssets'))}.")
-            lines.append(f"Dividend yield stands at {pct(info.get('dividendYield'))}, while free cash flow is {fmt_big(info.get('freeCashflow'))}.")
-            lines.append("Revenue and earnings trends, where available, show the direction of growth across recent periods.")
-            lines.append("Overall positioning reflects valuation, margin durability, cash generation, and sector dynamics relative to peers.")
+            lines.append(f"{info.get('longName', ticker)} operates in {info.get('sector', '–')} with a focus on {info.get('industry', '–')}.")
+            lines.append(f"Market capitalization: {fmt_big(info.get('marketCap'))}. Valuation: P/E={info.get('trailingPE','–')}, Price/Sales={info.get('priceToSalesTrailing12Months','–')}, EV/EBITDA={info.get('enterpriseToEbitda','–')}.")
+            lines.append(f"Profitability: margin {pct(profit_margin) if 'profit_margin' in locals() and profit_margin is not None else '–'}, ROE {pct(roe) if 'roe' in locals() and roe is not None else '–'}, ROA {pct(roa) if 'roa' in locals() and roa is not None else '–'}.")
+            lines.append(f"Liquidity: current ratio {current_ratio if 'current_ratio' in locals() and current_ratio is not None else '–'}, cash ratio {cash_ratio if 'cash_ratio' in locals() and cash_ratio is not None else '–'}.")
+            lines.append(f"Growth: revenue YoY {pct(revenue_yoy) if revenue_yoy is not None else '–'}, net income YoY {pct(net_income_yoy) if net_income_yoy is not None else '–'}.")
+            lines.append(f"Free cash flow and dividend yield contribute to capital returns where available.")
+            lines.append("Overall positioning reflects valuation, margin durability, cash generation, liquidity, and growth dynamics.")
             st.info(" ".join(lines))
 
 # --------------------------
@@ -401,7 +418,7 @@ if section == "Company Search":
 # --------------------------
 if section == "AI Comparison":
     st.header("Multi-ticker comparison")
-    tickers = st.text_input("Enter tickers (comma-separated), e.g., AAPL, MSFT, NVDA", key="compare_input")
+    tickers = st.text_input("Enter tickers (comma-separated)", key="cmp").strip()
     ts = [t.strip().upper() for t in tickers.split(",") if t.strip()]
     if ts:
         data = []
@@ -417,11 +434,7 @@ if section == "AI Comparison":
                         "marketCap": float(ov.get("MarketCapitalization")) if ov.get("MarketCapitalization") else None,
                         "trailingPE": float(ov.get("PERatio")) if ov.get("PERatio") else None,
                         "priceToSalesTrailing12Months": float(ov.get("PriceToSalesRatioTTM")) if ov.get("PriceToSalesRatioTTM") else None,
-                        "enterpriseToEbitda": float(ov.get("EVToEBITDA")) if ov.get("EVToEBITDA") else None,
-                        "profitMargins": None,
-                        "operatingMargins": None,
-                        "returnOnEquity": float(ov.get("ReturnOnEquityTTM")) if ov.get("ReturnOnEquityTTM") else None,
-                        "returnOnAssets": None
+                        "enterpriseToEbitda": float(ov.get("EVToEBITDA")) if ov.get("EVToEBITDA") else None
                     }
                 data.append({
                     "Ticker": tk,
@@ -430,11 +443,7 @@ if section == "AI Comparison":
                     "MarketCap": ii.get("marketCap", None),
                     "P/E": ii.get("trailingPE", None),
                     "Price/Sales": ii.get("priceToSalesTrailing12Months", None),
-                    "EV/EBITDA": ii.get("enterpriseToEbitda", None),
-                    "ProfitMargin": ii.get("profitMargins", None),
-                    "OperatingMargin": ii.get("operatingMargins", None),
-                    "ROE": ii.get("returnOnEquity", None),
-                    "ROA": ii.get("returnOnAssets", None)
+                    "EV/EBITDA": ii.get("enterpriseToEbitda", None)
                 })
             except Exception:
                 pass
@@ -443,66 +452,57 @@ if section == "AI Comparison":
             st.info("No data for the given tickers.")
         else:
             st.dataframe(df)
-
             for col in ["MarketCap", "P/E", "Price/Sales", "EV/EBITDA"]:
                 sub = df[["Ticker", col]].dropna()
                 if not sub.empty:
                     st.plotly_chart(px.bar(sub, x="Ticker", y=col, title=f"{col} comparison"), use_container_width=True)
 
-            st.markdown("#### Comparison summary")
-            # Safe idx operations
-            biggest = df.loc[df["MarketCap"].idxmax(), "Ticker"] if df["MarketCap"].notna().any() else ts[0]
-            lowest_pe = df.loc[df["P/E"].idxmin(), "Ticker"] if df["P/E"].notna().any() else ts[0]
-            highest_margin = df.loc[df["ProfitMargin"].idxmax(), "Ticker"] if df["ProfitMargin"].notna().any() else ts[0]
-            lines = []
-            lines.append(f"This comparison covers {', '.join(ts)}.")
-            lines.append(f"The largest by market capitalization is {biggest}.")
-            lines.append(f"On valuation, {lowest_pe} shows the lowest P/E among the group.")
-            lines.append(f"Profitability leadership is {highest_margin} by profit margin.")
-            lines.append("Growth trajectories and margin profiles differ, influencing risk-adjusted attractiveness.")
-            lines.append("Relative valuation (P/E, Price/Sales, EV/EBITDA) frames expectations for returns.")
-            lines.append("Overall positioning depends on cash generation, margin durability, and sector tailwinds.")
-            st.info(" ".join(lines))
-
 # --------------------------
-# SEC Filings
+# SEC Filings with embedded documents
 # --------------------------
 if section == "SEC Filings":
     st.header("SEC filings viewer")
-    sec_ticker = st.text_input("Enter a US ticker (e.g., AAPL, MSFT, TSLA)", key="sec_input").strip().upper()
-    if sec_ticker:
-        base_url = f"https://www.sec.gov/cgi-bin/browse-edgar?CIK={sec_ticker}&type=&owner=exclude&count=20&action=getcompany"
+    sec_ticker = st.text_input("Enter a US ticker (e.g., AAPL, MSFT, TSLA)", key="sec").strip().upper()
+    load_filings = st.button("Load recent filings", key="load_sec")
+    if sec_ticker and load_filings:
+        base_url = f"https://www.sec.gov/cgi-bin/browse-edgar?CIK={sec_ticker}&type=&owner=exclude&count=40&action=getcompany"
         try:
-            resp = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"})
+            resp = requests.get(base_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
             rows = soup.find_all("tr")
-            found = False
+            docs = []
             for row in rows:
                 cols = row.find_all("td")
                 if len(cols) >= 4:
                     form_type = cols[0].text.strip()
                     filing_date = cols[3].text.strip()
                     link_tag = cols[1].find("a")
-                    if link_tag:
-                        filing_link = "https://www.sec.gov" + link_tag["href"]
-                        if form_type in ["10-K", "10-Q", "8-K", "S-1", "DEF 14A"]:
-                            st.markdown(f"- {form_type} filed on {filing_date} — [View filing]({filing_link})")
-                            found = True
-            if not found:
-                st.warning("No recent 10-K, 10-Q or 8-K found.")
+                    if link_tag and form_type in ["10-K", "10-Q", "8-K", "S-1", "DEF 14A"]:
+                        filing_url = "https://www.sec.gov" + link_tag["href"]
+                        docs.append({"type": form_type, "date": filing_date, "url": filing_url})
+            if not docs:
+                st.warning("No recent core filings found.")
+            else:
+                for i, d in enumerate(docs[:10]):
+                    st.markdown(f"- {d['type']} filed on {d['date']} — [Open filing]({d['url']})")
+                st.markdown("#### View a filing document inline")
+                choice = st.selectbox("Select filing to view", [f"{d['type']} ({d['date']})" for d in docs[:10]], key="sec_choice")
+                if choice:
+                    sel = docs[[f"{d['type']} ({d['date']})" for d in docs[:10]].index(choice)]
+                    # Many filing pages have a 'Documents' link that contains the HTML filing; embed that page
+                    st.components.v1.iframe(sel["url"], height=600, scrolling=True)
         except requests.exceptions.RequestException:
             st.error("Network error while retrieving SEC filings.")
         except Exception:
-            st.error("Unexpected error. Please try again.")
+            st.error("Unexpected error. Try again.")
 
 # --------------------------
 # News Feed
 # --------------------------
 if section == "News Feed":
     st.header("News feed")
-    st.write("Enter a ticker to fetch recent headlines via Yahoo Finance.")
-    news_ticker = st.text_input("Ticker for news (e.g., AAPL, MSFT)", key="news_input").strip().upper()
+    news_ticker = st.text_input("Ticker for news (e.g., AAPL, MSFT)", key="news").strip().upper()
     if news_ticker:
         try:
             tk = yf.Ticker(news_ticker)
@@ -523,34 +523,30 @@ if section == "News Feed":
 # --------------------------
 if section == "Global Markets":
     st.header("Global markets")
-    st.write("Add indices, FX, commodities, and crypto symbols. Examples: ^GSPC, ^NDX, ^DJI, EURUSD=X, CL=F, GC=F.")
-    gm_tickers = st.text_input("Enter symbols (comma-separated)", key="global_input")
+    gm_tickers = st.text_input("Symbols (comma-separated): e.g., ^GSPC, ^NDX, EURUSD=X, CL=F", key="gm").strip()
     syms = [s.strip() for s in gm_tickers.split(",") if s.strip()]
     for sym in syms:
-        st.markdown(f"#### {sym}")
-        df = get_prices_with_fallback(sym, period="1y", interval="1d")
+        df = get_prices(sym, period="1y", interval="1d")
         if df.empty:
-            st.info("No data.")
+            st.info(f"No data for {sym}.")
         else:
-            fig = px.line(df, x="Date", y="Close", title=f"{sym} closing price (1y)")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(px.line(df, x="Date", y="Close", title=f"{sym} closing price (1y)"), use_container_width=True)
 
 # --------------------------
 # Portfolio
 # --------------------------
 if section == "Portfolio":
     st.header("Portfolio tracker")
-    pt = st.text_input("Enter holdings (comma-separated), e.g., AAPL, MSFT, NVDA", key="portfolio_input")
+    pt = st.text_input("Holdings (comma-separated tickers)", key="pf").strip()
     holdings = [h.strip().upper() for h in pt.split(",") if h.strip()]
     if holdings:
         rows = []
         for tk in holdings:
-            df = get_prices_with_fallback(tk, period="1y", interval="1d")
-            if df.empty or "Close" not in df.columns:
-                continue
+            df = get_prices(tk, period="1y", interval="1d")
+            if df.empty or "Close" not in df.columns: continue
             last = df["Close"].iloc[-1]
             rows.append({"Ticker": tk, "Last close": last})
         if rows:
             st.dataframe(pd.DataFrame(rows))
         else:
-            st.info("No price data for the given tickers.")
+            st.info("No price data for given tickers.")
